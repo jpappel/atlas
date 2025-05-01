@@ -1,6 +1,7 @@
 package query
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,10 +31,11 @@ const (
 
 // TODO: change interface to use byte slices
 type Outputer interface {
-	OutputOne(doc index.Document) (string, error)
-	Output(docs []index.Document) (string, error)
+	OutputOne(doc *index.Document) (string, error)
+	Output(docs []*index.Document) (string, error)
 }
 
+type DefaultOutput struct{}
 type JsonOutput struct{}
 type CustomOutput struct {
 	stringTokens   []string
@@ -41,14 +43,66 @@ type CustomOutput struct {
 	datetimeFormat string
 }
 
-func (o JsonOutput) OutputOne(doc index.Document) (string, error) {
-	// TODO: implement
-	return "", nil
+// compile time interface check
+var _ Outputer = &DefaultOutput{}
+var _ Outputer = &JsonOutput{}
+var _ Outputer = &CustomOutput{}
+
+// Returns "<path> <title> <date> authors:<authors...> tags:<tags>"
+// and a nil error
+func (o DefaultOutput) OutputOne(doc *index.Document) (string, error) {
+	b := strings.Builder{}
+	o.writeDoc(&b, doc)
+
+	return b.String(), nil
 }
 
-func (o JsonOutput) Output(docs []index.Document) (string, error) {
-	// TODO: implement
-	return "", nil
+func (o DefaultOutput) Output(docs []*index.Document) (string, error) {
+	b := strings.Builder{}
+
+	for i, doc := range docs {
+		o.writeDoc(&b, doc)
+		if i != len(docs)-1 {
+			b.WriteRune('\n')
+		}
+	}
+
+	return b.String(), nil
+}
+
+func (o DefaultOutput) writeDoc(b *strings.Builder, doc *index.Document) bool {
+	if b == nil {
+		return false
+	}
+
+	b.WriteString(doc.Path)
+	b.WriteRune(' ')
+	b.WriteString(doc.Title)
+	b.WriteRune(' ')
+	b.WriteString(doc.Date.String())
+	b.WriteRune(' ')
+	b.WriteString("authors:")
+	b.WriteString(strings.Join(doc.Authors, ","))
+	b.WriteString(" tags:")
+	b.WriteString(strings.Join(doc.Tags, ","))
+
+	return true
+}
+
+func (o JsonOutput) OutputOne(doc *index.Document) (string, error) {
+	b, err := json.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (o JsonOutput) Output(docs []*index.Document) (string, error) {
+	b, err := json.Marshal(docs)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func parseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
@@ -114,7 +168,7 @@ func NewCustomOutput(formatStr string, datetimeFormat string) (CustomOutput, err
 	return CustomOutput{strToks, outToks, datetimeFormat}, nil
 }
 
-func (o CustomOutput) OutputOne(doc index.Document) (string, error) {
+func (o CustomOutput) OutputOne(doc *index.Document) (string, error) {
 	b := strings.Builder{}
 	// TODO: determine realistic initial capacity
 
@@ -125,25 +179,23 @@ func (o CustomOutput) OutputOne(doc index.Document) (string, error) {
 	return b.String(), nil
 }
 
-func (o CustomOutput) Output(docs []index.Document) (string, error) {
+func (o CustomOutput) Output(docs []*index.Document) (string, error) {
 	b := strings.Builder{}
 	// TODO: determine realistic initial capacity
 
-	for i := range len(docs) - 1 {
-		if err := o.writeDoc(&b, docs[i]); err != nil {
+	for i, doc := range docs {
+		if err := o.writeDoc(&b, doc); err != nil {
 			return "", err
 		}
-		b.WriteRune('\n')
+		if i != len(docs)-1 {
+			b.WriteRune('\n')
+		}
 	}
-	if err := o.writeDoc(&b, docs[len(docs)-1]); err != nil {
-		return "", err
-	}
-	b.WriteRune('\n')
 
 	return b.String(), nil
 }
 
-func (o CustomOutput) writeDoc(b *strings.Builder, doc index.Document) error {
+func (o CustomOutput) writeDoc(b *strings.Builder, doc *index.Document) error {
 	curStrTok := 0
 	for _, token := range o.tokens {
 		if token == OUT_TOK_STR {

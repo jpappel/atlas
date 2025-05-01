@@ -13,12 +13,12 @@ import (
 )
 
 type Document struct {
-	Path      string
-	Title     string    `yaml:"title"`
-	Date      time.Time `yaml:"date"`
-	FileTime  time.Time
-	Authors   []string `yaml:"authors"`
-	Tags      []string `yaml:"tags"`
+	Path      string    `yaml:"-" json:"path"`
+	Title     string    `yaml:"title" json:"title"`
+	Date      time.Time `yaml:"date" json:"date"`
+	FileTime  time.Time `yaml:"-" json:"filetime"`
+	Authors   []string  `yaml:"authors" json:"authors"`
+	Tags      []string  `yaml:"tags" json:"tags"`
 	Links     []string
 	OtherMeta string // unsure about how to handle this
 }
@@ -205,7 +205,7 @@ func (idx Index) ParseOne(path string) (*Document, error) {
 	doc := &Document{}
 	doc.Path = path
 
-	f, err := os.Open(string(path))
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -224,12 +224,16 @@ func (idx Index) ParseOne(path string) (*Document, error) {
 		return nil, errors.New("Short read")
 	}
 
-	// TODO: implement custom unmarshaller, for singular `Author`
-	dec := yaml.NewDecoder(f)
-	// TODO: handle no yaml header error
-	if err := dec.Decode(&doc); err != nil {
-		panic(err)
+	// FIXME: unmarshalling is **VERY** borked up rn
+	if err := yaml.Unmarshal(buf, &doc); err != nil {
+		return nil, err
 	}
+	// TODO: implement custom unmarshaller, for singular `Author`
+	// dec := yaml.NewDecoder(f)
+	// TODO: handle no yaml header error
+	// if err := dec.Decode(&doc); err != nil {
+	// 	panic(err)
+	// }
 
 	// TODO: body parsing
 
@@ -239,6 +243,7 @@ func (idx Index) ParseOne(path string) (*Document, error) {
 func (idx Index) Parse(paths []string, numWorkers uint) {
 	jobs := make(chan string, numWorkers)
 	results := make(chan Document, numWorkers)
+	idx.Documents = make(map[string]*Document, len(paths))
 	wg := &sync.WaitGroup{}
 
 	wg.Add(int(numWorkers))

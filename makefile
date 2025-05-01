@@ -35,5 +35,5 @@ info:
 	@echo "INSTALL_PATH: $(INSTALL_PATH)"
 
 clean:
-	rm -f $(BINS)
+	rm -f $(BINS) *.db *.db-shm *.db-wal
 	go mod tidy
