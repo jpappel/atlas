@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 )
 
+// NOTE: in the future it would be interesting lua filters
 // TODO: create excluded path filter factory
 
 type DocFilter func(infoPath, io.ReadSeeker) bool
@@ -18,6 +19,17 @@ func NewExtensionFilter(ext string) DocFilter {
 func NewMaxFilesizeFilter(size int64) DocFilter {
 	return func(ip infoPath, _ io.ReadSeeker) bool {
 		return ip.info.Size() <= size
+	}
+}
+
+func NewFilenameFilter(excluded []string) DocFilter {
+	excludedSet := make(map[string]bool, len(excluded))
+	for _, filename := range excluded {
+		excludedSet[filename] = true
+	}
+	return func(ip infoPath, _ io.ReadSeeker) bool {
+		_, ok := excludedSet[filepath.Base(ip.path)]
+		return ok
 	}
 }
 
@@ -80,5 +92,5 @@ func YamlHeaderFilter(_ infoPath, r io.ReadSeeker) bool {
 }
 
 func DefaultFilters() []DocFilter {
-	return []DocFilter{NewExtensionFilter(".md"), NewMaxFilesizeFilter(200 * 1024)}
+	return []DocFilter{NewExtensionFilter(".md"), NewMaxFilesizeFilter(200 * 1024), YamlHeaderFilter}
 }

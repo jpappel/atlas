@@ -1,10 +1,12 @@
 package index
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
 	"testing"
+	"time"
 )
 
 var indexCases map[string]func(t *testing.T) Index
@@ -132,6 +134,146 @@ func TestIndex_Filter(t *testing.T) {
 				if gotPath != wantPath {
 					t.Errorf("At %d wanted %v, got %v", i, wantPath, gotPath)
 				}
+			}
+		})
+	}
+}
+
+func newTestFile(t *testing.T, name string) (*os.File, string) {
+	dir := t.TempDir()
+	path := dir + "/" + name
+	f, err := os.Create(path)
+	if err != nil {
+		panic(err)
+	}
+
+	return f, path
+}
+
+func TestIndex_ParseOne(t *testing.T) {
+	tests := []struct {
+		name      string
+		pathMaker func(t *testing.T) string
+		want      *Document
+		wantErr   error
+	}{
+		{
+			"title only header",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "title")
+				defer f.Close()
+
+				f.WriteString("---\ntitle: A title\n---\n")
+				return path
+			},
+			&Document{Title: "A title"},
+			nil,
+		},
+		{
+			"tags",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "tags")
+				defer f.Close()
+
+				f.WriteString("---\n")
+				f.WriteString("tags:\n")
+				f.WriteString("- a\n")
+				f.WriteString("- b\n")
+				f.WriteString("- c\n")
+				f.WriteString("---\n")
+
+				return path
+			},
+			&Document{Tags: []string{"a", "b", "c"}},
+			nil,
+		},
+		{
+			"date",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "date")
+				defer f.Close()
+
+				f.WriteString("---\ndate: May 1, 2025")
+
+				return path
+			},
+			&Document{Date: time.Date(2025, time.May, 1, 0, 0, 0, 0, time.UTC)},
+			nil,
+		},
+		{
+			"single author",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "author")
+				defer f.Close()
+
+				f.WriteString("---\nauthor: Rob Pike\n---\n")
+
+				return path
+			},
+			&Document{Authors: []string{"Rob Pike"}},
+			nil,
+		},
+		{
+			"multi author",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "author")
+				defer f.Close()
+
+				f.WriteString("---\nauthor:\n- Robert Griesemer\n- Rob Pike\n- Ken Thompson\n---\n")
+
+				return path
+			},
+			&Document{Authors: []string{"Robert Griesemer", "Rob Pike", "Ken Thompson"}},
+			nil,
+		},
+		{
+			"meta",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "metadata")
+				defer f.Close()
+
+				f.WriteString("---\n")
+				f.WriteString("unknownKey: value\n")
+				f.WriteString("---\n")
+
+				return path
+			},
+			&Document{OtherMeta: "unknownKey: value\n"},
+			nil,
+		},
+		{
+			"bad tags",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "badtags")
+				defer f.Close()
+
+				f.WriteString("---\n")
+				f.WriteString("tags:\n- good tag\n-bad tag\n")
+				f.WriteString("---\n")
+
+				return path
+			},
+			&Document{},
+			ErrHeaderParse,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tt.pathMaker(t)
+			tt.want.Path = path
+
+			got, gotErr := Index{}.ParseOne(path)
+
+			if !errors.Is(gotErr,tt.wantErr) {
+				t.Errorf("Recieved unexpected error: want %v got %v", tt.wantErr, gotErr)
+			} else if gotErr != nil {
+				return
+			}
+
+			if !got.Equal(*tt.want) {
+				t.Error("Recieved document is not equal")
+				t.Logf("Got  = %+v", got)
+				t.Logf("Want = %+v", tt.want)
 			}
 		})
 	}

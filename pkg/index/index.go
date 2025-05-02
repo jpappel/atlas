@@ -4,23 +4,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
 )
+
+var ErrHeaderParse error = errors.New("Unable to parse YAML header")
 
 type Document struct {
 	Path      string    `yaml:"-" json:"path"`
 	Title     string    `yaml:"title" json:"title"`
-	Date      time.Time `yaml:"date" json:"date"`
+	Date      time.Time `yaml:"-" json:"date"`
 	FileTime  time.Time `yaml:"-" json:"filetime"`
-	Authors   []string  `yaml:"authors" json:"authors"`
-	Tags      []string  `yaml:"tags" json:"tags"`
-	Links     []string
-	OtherMeta string // unsure about how to handle this
+	Authors   []string  `yaml:"-" json:"authors"`
+	Tags      []string  `yaml:"tags,omitempty" json:"tags"`
+	Links     []string  `yaml:"-" json:"links"`
+	OtherMeta string    `yaml:"-" json:"meta"`
 }
 
 type infoPath struct {
@@ -39,8 +44,125 @@ func (idx Index) String() string {
 	return fmt.Sprintf("%s Documents[%d] Filters[%d]", idx.Root, len(idx.Documents), len(idx.Filters))
 }
 
+var _ yaml.NodeUnmarshaler = (*Document)(nil)
+
+func (doc *Document) UnmarshalYAML(node ast.Node) error {
+	// parse top level fields
+	type alias Document
+	var temp alias
+	if err := yaml.NodeToValue(node, &temp); err != nil {
+		return err
+	}
+	doc.Title = temp.Title
+	doc.Tags = temp.Tags
+
+	mapnode, ok := node.(*ast.MappingNode)
+	if !ok {
+		return ErrHeaderParse
+	}
+
+	ignored_keyPaths := map[string]bool{
+		"$.title": true,
+		"$.tags":  true,
+	}
+
+	buf := strings.Builder{}
+	for _, kv := range mapnode.Values {
+		k, v := kv.Key, kv.Value
+		keyPath := k.GetPath()
+
+		if ignored_keyPaths[keyPath] {
+			continue
+		}
+
+		if keyPath == "$.date" {
+			if err := doc.parseDateNode(v); err != nil {
+				return err
+			}
+		} else if keyPath == "$.author" {
+			if err := doc.parseAuthor(v); err != nil {
+				return err
+			}
+		} else {
+			field, err := kv.MarshalYAML()
+			if err != nil {
+				return err
+			}
+			buf.Write(field)
+			buf.WriteByte('\n')
+		}
+	}
+
+	doc.OtherMeta = buf.String()
+
+	return nil
+}
+
+func (doc *Document) parseDateNode(node ast.Node) error {
+	dateNode, ok := node.(*ast.StringNode)
+	if !ok {
+		return ErrHeaderParse
+	}
+	dateStr := dateNode.Value
+
+	if dateStr == "" {
+		return nil
+	}
+
+	dateFormats := []string{
+		"Jan _2, 2006",
+		"January 2, 2006",
+		time.DateOnly,
+		time.DateTime,
+		time.Layout,
+		time.ANSIC,
+		time.UnixDate,
+		time.RubyDate,
+		time.RFC822,
+		time.RFC822Z,
+		time.RFC850,
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC3339,
+	}
+
+	var t time.Time
+	var err error
+	for _, layout := range dateFormats {
+		if t, err = time.Parse(layout, dateStr); err == nil {
+			doc.Date = t
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Unable to parse date: %s", dateNode.Value)
+}
+
+func (doc *Document) parseAuthor(node ast.Node) error {
+	authorsNode, ok := node.(*ast.SequenceNode)
+	if ok {
+		doc.Authors = make([]string, 0, len(authorsNode.Values))
+		for _, authorNode := range authorsNode.Values {
+			authorStrNode, ok := authorNode.(*ast.StringNode)
+			if !ok {
+				return ErrHeaderParse
+			}
+			doc.Authors = append(doc.Authors, authorStrNode.Value)
+		}
+	} else {
+		authorNode, ok := node.(*ast.StringNode)
+		if ok {
+			doc.Authors = []string{authorNode.Value}
+		} else {
+			return ErrHeaderParse
+		}
+	}
+
+	return nil
+}
+
 func (doc Document) Equal(other Document) bool {
-	if len(doc.Authors) != len(other.Authors) || len(doc.Tags) != len(other.Tags) || len(doc.Links) != len(other.Links) || doc.Path != other.Path || doc.Title != other.Title || doc.OtherMeta != other.OtherMeta || !doc.Date.Equal(other.Date) || !doc.FileTime.Equal(other.FileTime) {
+	if len(doc.Authors) != len(other.Authors) || len(doc.Tags) != len(other.Tags) || len(doc.Links) != len(other.Links) || doc.Path != other.Path || doc.Title != other.Title || doc.OtherMeta != other.OtherMeta || !doc.Date.Equal(other.Date) {
 		return false
 	}
 
@@ -126,7 +248,7 @@ func (idx Index) Traverse(numWorkers uint) []string {
 	activeJobs.Add(1)
 	jobs <- infoPath{path: idx.Root, info: rootInfo}
 
-	// TODO: close jobs queue
+	// close jobs queue
 	go func() {
 		activeJobs.Wait()
 		close(jobs)
@@ -201,6 +323,7 @@ func (idx Index) Filter(paths []string, numWorkers uint) []string {
 	return fPaths
 }
 
+// TODO: extract from struct
 func (idx Index) ParseOne(path string) (*Document, error) {
 	doc := &Document{}
 	doc.Path = path
@@ -209,6 +332,7 @@ func (idx Index) ParseOne(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -216,31 +340,16 @@ func (idx Index) ParseOne(path string) (*Document, error) {
 	}
 	doc.FileTime = info.ModTime()
 
-	buf := make([]byte, 4, 1024)
-	n, err := f.Read(buf)
-	if err != nil {
-		return nil, err
-	} else if n != 4 {
-		return nil, errors.New("Short read")
+	if err := yaml.NewDecoder(f).Decode(doc); err != nil {
+		return nil, errors.Join(ErrHeaderParse, err)
 	}
 
-	// FIXME: unmarshalling is **VERY** borked up rn
-	if err := yaml.Unmarshal(buf, &doc); err != nil {
-		return nil, err
-	}
-	// TODO: implement custom unmarshaller, for singular `Author`
-	// dec := yaml.NewDecoder(f)
-	// TODO: handle no yaml header error
-	// if err := dec.Decode(&doc); err != nil {
-	// 	panic(err)
-	// }
-
-	// TODO: body parsing
-
+	// TODO: read the rest of the file to find links
 	return doc, nil
 }
 
-func (idx Index) Parse(paths []string, numWorkers uint) {
+// TODO: separate method from struct
+func (idx *Index) Parse(paths []string, numWorkers uint) {
 	jobs := make(chan string, numWorkers)
 	results := make(chan Document, numWorkers)
 	idx.Documents = make(map[string]*Document, len(paths))
@@ -253,7 +362,10 @@ func (idx Index) Parse(paths []string, numWorkers uint) {
 				doc, err := idx.ParseOne(path)
 				if err != nil {
 					// TODO: propagate error
-					panic(err)
+					slog.Error("Error occured while parsing file",
+						slog.String("path", path), slog.String("err", err.Error()),
+					)
+					continue
 				}
 
 				results <- *doc
