@@ -40,8 +40,18 @@ type Index struct {
 }
 
 func (idx Index) String() string {
-	// TODO: print info about active filters
-	return fmt.Sprintf("%s Documents[%d] Filters[%d]", idx.Root, len(idx.Documents), len(idx.Filters))
+	b := strings.Builder{}
+	fmt.Fprintf(&b, "%s Documents[%d]\n", idx.Root, len(idx.Documents))
+	fmt.Fprintf(&b, "Filters[%d]: ", len(idx.Filters))
+
+	for i, docFilter := range idx.Filters {
+		b.WriteString(docFilter.Name)
+		if i != len(idx.Filters) {
+			b.WriteByte(',')
+		}
+	}
+
+	return b.String()
 }
 
 var _ yaml.NodeUnmarshaler = (*Document)(nil)
@@ -275,8 +285,8 @@ func (idx Index) FilterOne(path string) bool {
 	}
 	defer f.Close()
 
-	for _, filter := range idx.Filters {
-		if !filter(infoPath{string(path), info}, f) {
+	for _, docFilter := range idx.Filters {
+		if !docFilter.Filter(infoPath{string(path), info}, f) {
 			return false
 		}
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
@@ -323,8 +333,7 @@ func (idx Index) Filter(paths []string, numWorkers uint) []string {
 	return fPaths
 }
 
-// TODO: extract from struct
-func (idx Index) ParseOne(path string) (*Document, error) {
+func ParseDoc(path string) (*Document, error) {
 	doc := &Document{}
 	doc.Path = path
 
@@ -348,18 +357,17 @@ func (idx Index) ParseOne(path string) (*Document, error) {
 	return doc, nil
 }
 
-// TODO: separate method from struct
-func (idx *Index) Parse(paths []string, numWorkers uint) {
+func ParseDocs(paths []string, numWorkers uint) map[string]*Document {
 	jobs := make(chan string, numWorkers)
 	results := make(chan Document, numWorkers)
-	idx.Documents = make(map[string]*Document, len(paths))
+	docs := make(map[string]*Document, len(paths))
 	wg := &sync.WaitGroup{}
 
 	wg.Add(int(numWorkers))
 	for range numWorkers {
 		go func(jobs <-chan string, results chan<- Document, wg *sync.WaitGroup) {
 			for path := range jobs {
-				doc, err := idx.ParseOne(path)
+				doc, err := ParseDoc(path)
 				if err != nil {
 					// TODO: propagate error
 					slog.Error("Error occured while parsing file",
@@ -387,6 +395,8 @@ func (idx *Index) Parse(paths []string, numWorkers uint) {
 	}(results, wg)
 
 	for doc := range results {
-		idx.Documents[doc.Path] = &doc
+		docs[doc.Path] = &doc
 	}
+
+	return docs
 }

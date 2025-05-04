@@ -78,7 +78,7 @@ func TestYamlHeaderFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := YamlHeaderFilter(infoPath{}, tt.r)
+			got := yamlHeaderFilterFunc(infoPath{}, tt.r)
 			if got != tt.want {
 				t.Errorf("YamlHeaderFilter() = %v, want %v", got, tt.want)
 			}
@@ -100,9 +100,9 @@ func TestExtensionFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := NewExtensionFilter(tt.ext)
+			docFilter := NewExtensionFilter(tt.ext)
 			ip := tt.infoGen(t)
-			got := filter(ip, nil)
+			got := docFilter.Filter(ip, nil)
 
 			if got != tt.want {
 				t.Errorf("ExtensionFilter() = %v, want %v", got, tt.want)

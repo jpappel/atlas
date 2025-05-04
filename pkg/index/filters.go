@@ -1,39 +1,70 @@
 package index
 
 import (
+	"fmt"
 	"io"
 	"path/filepath"
 )
 
 // NOTE: in the future it would be interesting lua filters
-// TODO: create excluded path filter factory
 
-type DocFilter func(infoPath, io.ReadSeeker) bool
+type DocFilter struct {
+	Name   string
+	Filter func(infoPath, io.ReadSeeker) bool
+}
 
 func NewExtensionFilter(ext string) DocFilter {
-	return func(ip infoPath, _ io.ReadSeeker) bool {
-		return filepath.Ext(ip.path) == ext
+	return DocFilter{
+		ext + " Filter",
+		func(ip infoPath, _ io.ReadSeeker) bool {
+			return filepath.Ext(ip.path) == ext
+		},
 	}
 }
 
 func NewMaxFilesizeFilter(size int64) DocFilter {
-	return func(ip infoPath, _ io.ReadSeeker) bool {
-		return ip.info.Size() <= size
+	return DocFilter{
+		fmt.Sprintf("Max Size Filter %d", size),
+		func(ip infoPath, _ io.ReadSeeker) bool {
+			return ip.info.Size() <= size
+		},
 	}
 }
 
-func NewFilenameFilter(excluded []string) DocFilter {
+func NewExcludeFilenameFilter(excluded []string) DocFilter {
 	excludedSet := make(map[string]bool, len(excluded))
 	for _, filename := range excluded {
 		excludedSet[filename] = true
 	}
-	return func(ip infoPath, _ io.ReadSeeker) bool {
-		_, ok := excludedSet[filepath.Base(ip.path)]
-		return ok
+	return DocFilter{
+		"Excluded Filename filter",
+		func(ip infoPath, _ io.ReadSeeker) bool {
+			_, ok := excludedSet[filepath.Base(ip.path)]
+			return !ok
+		},
 	}
 }
 
-func YamlHeaderFilter(_ infoPath, r io.ReadSeeker) bool {
+func NewIncludeFilenameFilter(included []string) DocFilter {
+	includedSet := make(map[string]bool, len(included))
+	for _, filename := range included {
+		includedSet[filename] = true
+	}
+	return DocFilter{
+		"Included Filename filter",
+		func(ip infoPath, _ io.ReadSeeker) bool {
+			_, ok := includedSet[filepath.Base(ip.path)]
+			return ok
+		},
+	}
+}
+
+var YamlHeaderFilter = DocFilter{
+	"YAML Header Filter",
+	yamlHeaderFilterFunc,
+}
+
+func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
 	const bufSize = 4096
 	buf := make([]byte, bufSize)
 
