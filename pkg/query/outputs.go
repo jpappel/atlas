@@ -121,27 +121,27 @@ func parseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
 
 		curTok = append(curTok, c)
 		if curTok[0] == '%' && len(curTok) == 2 {
-			s := string(curTok)
-			if s == "%%" {
+			switch string(curTok) {
+			case "%%":
 				strToks = append(strToks, "%")
 				toks = append(toks, OUT_TOK_STR)
-			} else if s == "%p" {
+			case "%p":
 				toks = append(toks, OUT_TOK_PATH)
-			} else if s == "%T" {
+			case "%T":
 				toks = append(toks, OUT_TOK_TITLE)
-			} else if s == "%d" {
+			case "%d":
 				toks = append(toks, OUT_TOK_DATE)
-			} else if s == "%f" {
+			case "%f":
 				toks = append(toks, OUT_TOK_FILETIME)
-			} else if s == "%a" {
+			case "%a":
 				toks = append(toks, OUT_TOK_AUTHORS)
-			} else if s == "%t" {
+			case "%t":
 				toks = append(toks, OUT_TOK_TAGS)
-			} else if s == "%l" {
+			case "%l":
 				toks = append(toks, OUT_TOK_LINKS)
-			} else if s == "%m" {
+			case "%m":
 				toks = append(toks, OUT_TOK_META)
-			} else {
+			default:
 				return nil, nil, ErrUnrecognizedOutputToken
 			}
 			curTok = curTok[:0]
@@ -198,29 +198,30 @@ func (o CustomOutput) Output(docs []*index.Document) (string, error) {
 func (o CustomOutput) writeDoc(b *strings.Builder, doc *index.Document) error {
 	curStrTok := 0
 	for _, token := range o.tokens {
-		if token == OUT_TOK_STR {
+		switch token {
+		case OUT_TOK_STR:
 			if curStrTok >= len(o.stringTokens) {
 				return ErrExpectedMoreStringTokens
 			}
 			b.WriteString(o.stringTokens[curStrTok])
 			curStrTok++
-		} else if token == OUT_TOK_PATH {
+		case OUT_TOK_PATH:
 			b.WriteString(doc.Path)
-		} else if token == OUT_TOK_TITLE {
+		case OUT_TOK_TITLE:
 			b.WriteString(doc.Title)
-		} else if token == OUT_TOK_DATE {
+		case OUT_TOK_DATE:
 			b.WriteString(doc.Date.Format(o.datetimeFormat))
-		} else if token == OUT_TOK_FILETIME {
+		case OUT_TOK_FILETIME:
 			b.WriteString(doc.FileTime.Format(o.datetimeFormat))
-		} else if token == OUT_TOK_AUTHORS {
+		case OUT_TOK_AUTHORS:
 			b.WriteString(strings.Join(doc.Authors, ", "))
-		} else if token == OUT_TOK_TAGS {
+		case OUT_TOK_TAGS:
 			b.WriteString(strings.Join(doc.Tags, ", "))
-		} else if token == OUT_TOK_LINKS {
+		case OUT_TOK_LINKS:
 			b.WriteString(strings.Join(doc.Links, ", "))
-		} else if token == OUT_TOK_META {
+		case OUT_TOK_META:
 			b.WriteString(doc.OtherMeta)
-		} else {
+		default:
 			return ErrUnrecognizedOutputToken
 		}
 	}
