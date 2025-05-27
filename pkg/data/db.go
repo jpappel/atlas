@@ -231,15 +231,12 @@ func (q Query) Get(indexRoot string) (*index.Index, error) {
 func (q Query) Put(idx index.Index) error {
 	ctx := context.TODO()
 
-	insertCtx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-
 	p, err := NewPutMany(q.db, idx.Documents)
 	if err != nil {
 		return err
 	}
 
-	if err := p.Insert(insertCtx); err != nil {
+	if err := p.Insert(ctx); err != nil {
 		return err
 	}
 

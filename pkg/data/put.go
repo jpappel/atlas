@@ -305,15 +305,14 @@ func (p PutMany) authors(ctx context.Context) error {
 		return err
 	}
 
-	_, err = p.db.Exec("CREATE TEMPORARY TABLE names (name TEXT UNIQUE NOT NULL)")
-	// _, err = tx.Exec("CREATE TEMPORARY TABLE names (name TEXT UNIQUE NOT NULL)")
+	_, err = tx.Exec("CREATE TEMPORARY TABLE names (name TEXT UNIQUE NOT NULL)")
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 	defer p.db.Exec("DROP TABLE IF EXISTS temp.names")
 
-	nameStmt, err := p.db.PrepareContext(ctx, "INSERT OR IGNORE INTO temp.names VALUES (?)")
+	nameStmt, err := tx.Prepare("INSERT OR IGNORE INTO temp.names VALUES (?)")
 	if err != nil {
 		return err
 	}
@@ -331,10 +330,10 @@ func (p PutMany) authors(ctx context.Context) error {
 
 	newAuthorsQuery := `
 	WITH new_names AS (
-		SELECT name
+		SELECT temp.names.name
 		FROM temp.names
 		LEFT JOIN Authors on Authors.name = temp.names.name
-		LEFT JOIN Aliases on Aliases.alias = tmep.names.name
+		LEFT JOIN Aliases on Aliases.alias = temp.names.name
 		WHERE Authors.name IS NULL AND Aliases.alias IS NULL
 	)
 	INSERT INTO Authors(name)
@@ -349,9 +348,9 @@ func (p PutMany) authors(ctx context.Context) error {
 	_, err = tx.Exec(`
 	CREATE TEMPORARY TABLE name_ids AS
 		SELECT names.name AS name, COALESCE(Authors.id, Aliases.authorId) AS authorId
-		FROM names
+		FROM temp.names
 		LEFT JOIN Authors ON temp.names.name = Authors.name
-		LEFT JOIN Aliases ON temp.names.name = Aliases.name
+		LEFT JOIN Aliases ON temp.names.name = Aliases.alias
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -359,7 +358,7 @@ func (p PutMany) authors(ctx context.Context) error {
 	}
 	defer p.db.Exec("DROP TABLE IF EXISTS temp.name_ids")
 
-	docAuthorsStmt, err := p.db.Prepare(`
+	docAuthorsStmt, err := tx.Prepare(`
 	INSERT INTO DocumentAuthors (docId, authorId)
 	SELECT ?, authorId
 	FROM temp.name_ids
@@ -380,5 +379,10 @@ func (p PutMany) authors(ctx context.Context) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	fmt.Println("encountered no errors!")
+	return nil
 }
