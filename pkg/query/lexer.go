@@ -9,7 +9,8 @@ import (
 
 type queryTokenType int
 
-var lexRegex, oldLexRegex *regexp.Regexp
+var LexRegex *regexp.Regexp
+var LexRegexPattern string
 
 const (
 	TOK_UNKNOWN queryTokenType = iota
@@ -148,20 +149,20 @@ func Lex(query string) []Token {
 		CLAUSE_END
 	)
 
-	matches := lexRegex.FindAllStringSubmatch(query, -1)
+	matches := LexRegex.FindAllStringSubmatch(query, -1)
 	tokens := make([]Token, 0, 4*len(matches))
 
 	tokens = append(tokens, Token{Type: TOK_CLAUSE_START})
 	tokens = append(tokens, Token{TOK_CLAUSE_AND, "and"}) // default to and'ing all args
 	clauseLevel := 1
-	for i, match := range matches {
+	for _, match := range matches {
 		if match[CLAUSE_START] != "" {
 			tokens = append(tokens, Token{Type: TOK_CLAUSE_START})
 			// TODO: set maximum nest level
 			clauseLevel += 1
 		}
 		if match[CLAUSE_OPERATOR] != "" {
-			if i == 0 || tokens[i-1].Type != TOK_CLAUSE_START {
+			if len(tokens) == 0 || tokens[len(tokens)-1].Type != TOK_CLAUSE_START {
 				tokens = append(tokens, Token{Type: TOK_CLAUSE_START})
 				clauseLevel += 1
 			}
@@ -283,15 +284,10 @@ func tokenizeValue(s string, catType queryTokenType) Token {
 	return t
 }
 
-func treeStringify(tokens []Token) string {
+func TokensStringify(tokens []Token) string {
 	b := strings.Builder{}
 
 	indentLvl := 0
-	writeIndent := func(level int) {
-		for range level {
-			b.WriteString("\t")
-		}
-	}
 	writeToken := func(t Token) {
 		b.WriteByte('`')
 		b.WriteString(t.String())
@@ -301,11 +297,11 @@ func treeStringify(tokens []Token) string {
 	for i, token := range tokens {
 		switch token.Type {
 		case TOK_CLAUSE_START:
-			writeIndent(indentLvl)
+			writeIndent(&b, indentLvl)
 			b.WriteByte('(')
 		case TOK_CLAUSE_END:
 			indentLvl -= 1
-			writeIndent(indentLvl)
+			writeIndent(&b, indentLvl)
 			b.WriteString(")\n")
 		case TOK_CLAUSE_OR:
 			b.WriteString("or\n")
@@ -315,7 +311,7 @@ func treeStringify(tokens []Token) string {
 			indentLvl += 1
 		case TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META, TOK_OP_NEG:
 			if i == 0 || tokens[i-1].Type != TOK_OP_NEG {
-				writeIndent(indentLvl)
+				writeIndent(&b, indentLvl)
 			}
 			writeToken(token)
 		case TOK_VAL_STR, TOK_VAL_DATETIME, TOK_UNKNOWN:
@@ -340,7 +336,8 @@ func init() {
 	clauseOpPattern := `(?<clause_operator>(?i)and|or)?`
 	clauseStart := `(?<clause_start>\()?`
 	clauseEnd := `(?<clause_end>\))?`
-	clausePattern := clauseStart + `\s*` + clauseOpPattern + `\s*(?:` + statementPattern + `|` + unknownPattern + `)\s*` + clauseEnd
+	clausePattern := clauseStart + `\s*` + clauseOpPattern + `\s*(?:` + statementPattern + `|` + unknownPattern + `)\s*` + clauseEnd + `\s*`
+	LexRegexPattern = clausePattern
 
-	lexRegex = regexp.MustCompile(clausePattern)
+	LexRegex = regexp.MustCompile(LexRegexPattern)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
+	"github.com/jpappel/atlas/pkg/util"
 )
 
 var ErrHeaderParse error = errors.New("Unable to parse YAML header")
@@ -119,33 +120,12 @@ func (doc *Document) parseDateNode(node ast.Node) error {
 		return nil
 	}
 
-	dateFormats := []string{
-		"Jan _2, 2006",
-		"January 2, 2006",
-		time.DateOnly,
-		time.DateTime,
-		time.Layout,
-		time.ANSIC,
-		time.UnixDate,
-		time.RubyDate,
-		time.RFC822,
-		time.RFC822Z,
-		time.RFC850,
-		time.RFC1123,
-		time.RFC1123Z,
-		time.RFC3339,
-	}
-
-	var t time.Time
 	var err error
-	for _, layout := range dateFormats {
-		if t, err = time.Parse(layout, dateStr); err == nil {
-			doc.Date = t
-			return nil
-		}
+	if doc.Date, err = util.ParseDateTime(dateStr); err != nil {
+		return fmt.Errorf("Unable to parse date: %s", dateNode.Value)
 	}
 
-	return fmt.Errorf("Unable to parse date: %s", dateNode.Value)
+	return nil
 }
 
 func (doc *Document) parseAuthor(node ast.Node) error {

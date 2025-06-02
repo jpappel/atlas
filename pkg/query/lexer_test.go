@@ -28,6 +28,26 @@ func TestLex(t *testing.T) {
 			{TOK_CAT_DATE, "d"}, {TOK_OP_AP, ":"}, {TOK_VAL_DATETIME, "01010001"},
 			{Type: TOK_CLAUSE_END},
 		}},
+		{"leading subclause", "(or a:a a:b)", []Token{
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_OR, "or"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "a"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "b"},
+			{Type: TOK_CLAUSE_END},
+			{Type: TOK_CLAUSE_END},
+		}},
+		{"clause after clause", "(or a:a a:b) (or a:c a:d)", []Token{
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_OR, "or"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "a"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "b"},
+			{Type: TOK_CLAUSE_END},
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_OR, "or"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "c"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "d"},
+			{Type: TOK_CLAUSE_END},
+			{Type: TOK_CLAUSE_END},
+		}},
 		{"nested clauses", "a:a (or t:b t!=c) or d<=01010001 and -T~foo", []Token{
 			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
 			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "a"},
@@ -63,8 +83,8 @@ func TestLex(t *testing.T) {
 			}
 
 			if t.Failed() {
-				t.Log("Got\n", treeStringify(got))
-				t.Log("Want\n", treeStringify(tt.want))
+				t.Log("Got\n", TokensStringify(got))
+				t.Log("Want\n", TokensStringify(tt.want))
 			}
 		})
 	}
