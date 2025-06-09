@@ -1,4 +1,5 @@
 atlas
+query_shell
 *.db
 *.db-shm
 *.db-wal

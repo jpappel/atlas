@@ -9,6 +9,8 @@ all: $(BINS)
 atlas: $(SRC)
 	go build -o $@ ./cmd/atlas.go
 
+query_shell: $(wildcard ./debug_shell//*.go) $(wildcard pkg/*/*.go)
+	go build -o $@ $(wildcard ./debug_shell/*.go)
 
 test:
 	go test ./...
