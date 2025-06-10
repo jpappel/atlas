@@ -3,6 +3,7 @@ package query
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -76,7 +77,7 @@ var _ Valuer = StringValue{}
 var _ Valuer = DatetimeValue{}
 
 type StringValue struct {
-	s string
+	S string
 }
 
 func (v StringValue) Type() valuerType {
@@ -89,9 +90,9 @@ func (v StringValue) Compare(other Valuer) int {
 		return 0
 	}
 
-	if v.s < o.s {
+	if v.S < o.S {
 		return -1
-	} else if v.s > o.s {
+	} else if v.S > o.S {
 		return 1
 	} else {
 		return 0
@@ -216,6 +217,43 @@ func (c Clause) String() string {
 	b := &strings.Builder{}
 	c.buildString(b, 0)
 	return b.String()
+}
+
+// Merge child clauses with their parents when applicable
+func (root *Clause) Flatten() {
+	stack := make([]*Clause, 0, len(root.Clauses))
+	stack = append(stack, root)
+	for len(stack) != 0 {
+		top := len(stack) - 1
+		node := stack[top]
+		stack = stack[:top]
+
+		hasMerged := false
+		// cannot be "modernized", node.Clauses is modified in loop
+		for i := 0; i < len(node.Clauses); i++ {
+			child := node.Clauses[i]
+
+			// merge because of commutativity
+			if node.Operator == child.Operator {
+				hasMerged = true
+				node.Statements = append(node.Statements, child.Statements...)
+				node.Clauses = append(node.Clauses, child.Clauses...)
+			} else {
+				stack = append(stack, child)
+			}
+		}
+
+		if hasMerged {
+			numChildren := len(stack) - top
+			if numChildren > 0 {
+				node.Clauses = slices.Grow(node.Clauses, numChildren)
+				node.Clauses = node.Clauses[:numChildren]
+				copy(node.Clauses, stack[top:top+numChildren])
+			} else {
+				node.Clauses = nil
+			}
+		}
+	}
 }
 
 func (c Clause) buildString(b *strings.Builder, level int) {
@@ -349,7 +387,7 @@ func Parse(tokens []Token) (*Clause, error) {
 		default:
 			fmt.Fprintln(os.Stderr, token)
 			return nil, &TokenError{
-				got: token,
+				got:     token,
 				gotPrev: prevToken,
 			}
 		}
