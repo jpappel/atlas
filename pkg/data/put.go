@@ -67,19 +67,19 @@ func (p Put) Insert() error {
 
 func (p PutMany) Insert(ctx context.Context) error {
 	if err := p.documents(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to insert documents: %v", err)
 	}
 
 	if err := p.tags(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to insert tags: %v", err)
 	}
 
 	if err := p.links(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to insert links: %v", err)
 	}
 
 	if err := p.authors(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to insert authors: %v", err)
 	}
 
 	return nil
@@ -160,6 +160,10 @@ func (p *PutMany) documents(ctx context.Context) error {
 }
 
 func (p Put) tags() error {
+	if len(p.Doc.Tags) == 0 {
+		return nil
+	}
+
 	query, args := BatchQuery("INSERT OR IGNORE INTO Tags (name) VALUES", "", "(?)", ",", "", len(p.Doc.Tags), p.Doc.Tags)
 	if _, err := p.tx.Exec(query, args...); err != nil {
 		return err
@@ -195,6 +199,9 @@ func (p PutMany) tags(ctx context.Context) error {
 	txNewTagStmt := tx.StmtContext(ctx, newTagStmt)
 
 	for id, doc := range p.Docs {
+		if len(doc.Tags) == 0 {
+			continue
+		}
 		for _, tag := range doc.Tags {
 			if _, err := txNewTagStmt.ExecContext(ctx, tag); err != nil {
 				tx.Rollback()
@@ -209,7 +216,7 @@ func (p PutMany) tags(ctx context.Context) error {
 			WHERE name IN
 		`, id)
 		query, args := BatchQuery(preQuery, "(", "?", ",", ")", len(doc.Tags), doc.Tags)
-		if _, err := tx.Exec(query, args); err != nil {
+		if _, err := tx.Exec(query, args...); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -244,6 +251,10 @@ func (p PutMany) links(ctx context.Context) error {
 	}
 
 	for id, doc := range p.Docs {
+		if len(doc.Links) == 0 {
+			continue
+		}
+
 		preQuery := fmt.Sprintf(`
 		INSERT INTO Links (referencedId, refererId)
 			SELECT id, %d
@@ -261,6 +272,10 @@ func (p PutMany) links(ctx context.Context) error {
 }
 
 func (p Put) authors() error {
+	if len(p.Doc.Authors) == 0 {
+		return nil
+	}
+
 	// TODO: consider using temp table instead of cte
 	namesCTE, args := BatchQuery("WITH names(n) AS",
 		"( VALUES ", "(?)", ",", "),", len(p.Doc.Authors), p.Doc.Authors)
@@ -320,6 +335,9 @@ func (p PutMany) authors(ctx context.Context) error {
 
 	txNameStmt := tx.StmtContext(ctx, nameStmt)
 	for _, doc := range p.Docs {
+		if len(doc.Authors) == 0 {
+			continue
+		}
 		for _, name := range doc.Authors {
 			if _, err := txNameStmt.Exec(name); err != nil {
 				tx.Rollback()
@@ -371,6 +389,9 @@ func (p PutMany) authors(ctx context.Context) error {
 	defer docAuthorsStmt.Close()
 
 	for id, doc := range p.Docs {
+		if len(doc.Authors) == 0 {
+			continue
+		}
 		for _, name := range doc.Authors {
 			if _, err := tx.Stmt(docAuthorsStmt).Exec(id, name); err != nil {
 				tx.Rollback()
