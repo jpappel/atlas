@@ -14,17 +14,6 @@ import (
 	"github.com/jpappel/atlas/pkg/query"
 )
 
-var commands = []string{
-	"help",
-	"let",
-	"del",
-	"print",
-	"tokenize",
-	"rematch",
-	"parse",
-	"repattern",
-}
-
 type Interpreter struct {
 	State   State
 	Scanner *bufio.Scanner
@@ -52,6 +41,7 @@ const (
 	ITOK_CMD_SLICE
 	ITOK_CMD_REMATCH
 	ITOK_CMD_REPATTERN
+	ITOK_CMD_FLATTEN
 	ITOK_CMD_TOKENIZE
 	ITOK_CMD_PARSE
 )
@@ -177,6 +167,20 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 			}
 			carryValue.Type = CLAUSE
 			carryValue.Val = clause
+		case ITOK_CMD_FLATTEN:
+			if carryValue.Type != CLAUSE {
+				fmt.Println("Carry type: ", carryValue.Type)
+				return false, errors.New("Unable to parse argument")
+			}
+
+			clause, ok := carryValue.Val.(*query.Clause)
+			if !ok {
+				return true, errors.New("Type corruption during parse, expected []query.Tokens")
+			}
+
+			clause.Flatten()
+			carryValue.Type = CLAUSE
+			carryValue.Val = clause
 		case ITOK_VAR_NAME:
 			// NOTE: very brittle, only allows expansion of a single variable
 			if i == len(tokens)-1 {
@@ -201,6 +205,7 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 
 	if carryValue.Type != INVALID {
 		fmt.Println(carryValue)
+		interpreter.State["_"] = carryValue
 	}
 
 	return false, nil
@@ -239,6 +244,8 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_TOKENIZE})
 		} else if trimmedWord == "parse" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
+		} else if trimmedWord == "flatten" {
+			tokens = append(tokens, IToken{Type: ITOK_CMD_FLATTEN})
 		} else if prevType == ITOK_CMD_LET {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_DEL {
@@ -260,6 +267,8 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 				tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 			}
 		} else if prevType == ITOK_CMD_PARSE {
+			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
+		} else if prevType == ITOK_CMD_FLATTEN {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAR_NAME && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
@@ -330,5 +339,6 @@ func printHelp() {
 	fmt.Println("tokenize (string|name)                - tokenize a string")
 	fmt.Println("        ex. tokenize `author:me")
 	fmt.Println("parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Println("\nBare `tokenize` and `parse` assign to an implicit variable _")
+	fmt.Println("flatten (clause|name)                 - flatten a clause")
+	fmt.Println("\nBare commands which return a value assign to an implicit variable _")
 }
