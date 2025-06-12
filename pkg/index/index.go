@@ -329,7 +329,14 @@ func ParseDoc(path string) (*Document, error) {
 	}
 	doc.FileTime = info.ModTime()
 
-	if err := yaml.NewDecoder(f).Decode(doc); err != nil {
+	pos := yamlHeaderPos(f)
+	f.Seek(0, io.SeekStart)
+	if pos < 0 {
+		return nil, fmt.Errorf("Can't find YAML header in %s", path)
+	}
+
+	// FIXME: decoder reads past yaml header into document
+	if err := yaml.NewDecoder(io.LimitReader(f, pos)).Decode(doc); err != nil {
 		return nil, errors.Join(ErrHeaderParse, err)
 	}
 

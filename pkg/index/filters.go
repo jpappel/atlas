@@ -65,6 +65,11 @@ var YamlHeaderFilter = DocFilter{
 }
 
 func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
+	return yamlHeaderPos(r) > 0
+}
+
+// Position of the end of a yaml header, negative
+func yamlHeaderPos(r io.ReadSeeker) int64 {
 	const bufSize = 4096
 	buf := make([]byte, bufSize)
 
@@ -72,9 +77,10 @@ func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
 	cmp := make([]byte, 4)
 	n, err := r.Read(carry)
 	if err != nil || n < 4 || string(carry) != "---\n" {
-		return false
+		return -1
 	}
 
+	pos := int64(3)
 	headerFound := false
 	readMore := true
 	for readMore {
@@ -83,12 +89,13 @@ func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
 		if err == io.EOF {
 			readMore = false
 		} else if err != nil {
-			return false
+			return -1
 		}
 		buf = buf[:n]
 
 		// PERF: the carry doesn't need to be checked on the first loop iteration
 		for i := range min(4, n) {
+			pos++
 			b := carry[i]
 			for j := range 4 {
 				if i+j < 4 {
@@ -104,6 +111,7 @@ func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
 			}
 		}
 		for i := range n - 4 {
+			pos++
 			b := buf[i]
 			if b == '\n' && string(buf[i:i+5]) == "\n---\n" {
 				headerFound = true
@@ -119,7 +127,11 @@ func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
 		}
 	}
 
-	return headerFound
+	if headerFound {
+		return pos
+	} else {
+		return -1
+	}
 }
 
 func DefaultFilters() []DocFilter {

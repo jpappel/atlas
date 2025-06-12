@@ -193,7 +193,7 @@ func TestIndex_ParseOne(t *testing.T) {
 				f, path := newTestFile(t, "date")
 				defer f.Close()
 
-				f.WriteString("---\ndate: May 1, 2025")
+				f.WriteString("---\ndate: May 1, 2025\n---\n")
 
 				return path
 			},
@@ -266,6 +266,7 @@ func TestIndex_ParseOne(t *testing.T) {
 
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Errorf("Recieved unexpected error: want %v got %v", tt.wantErr, gotErr)
+				return
 			} else if gotErr != nil {
 				return
 			}
