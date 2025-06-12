@@ -65,6 +65,22 @@ func markdownExtension(t *testing.T) infoPath {
 	return infoPath{path, info}
 }
 
+func parentDirectory(t *testing.T) infoPath {
+	root := t.TempDir()
+	dir := root + "/parent"
+	path := dir + "/a"
+
+	return infoPath{path: path}
+}
+
+func grandparentDirectory(t *testing.T) infoPath {
+	root := t.TempDir()
+	dir := root + "/grandparent/parent"
+	path := dir + "/a"
+
+	return infoPath{path: path}
+}
+
 func TestYamlHeaderFilter(t *testing.T) {
 	tests := []struct {
 		name string
@@ -106,6 +122,42 @@ func TestExtensionFilter(t *testing.T) {
 
 			if got != tt.want {
 				t.Errorf("ExtensionFilter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExcludeParentFilter(t *testing.T) {
+	tests := []struct {
+		name    string
+		infoGen func(*testing.T) infoPath
+		parent  string
+		want    bool
+	}{
+		{
+			"no matching parent",
+			parentDirectory,
+			"foobar", true,
+		},
+		{
+			"direct parent",
+			parentDirectory,
+			"parent", false,
+		},
+		{
+			"nested parent",
+			grandparentDirectory,
+			"grandparent", false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			docFilter := NewExcludeParentFilter(tt.parent)
+			ip := tt.infoGen(t)
+			got := docFilter.Filter(ip, nil)
+
+			if got != tt.want {
+				t.Errorf("ExcludeParentFilter() = %v, want %v", got, tt.want)
 			}
 		})
 	}

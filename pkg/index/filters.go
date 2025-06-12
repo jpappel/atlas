@@ -3,7 +3,10 @@ package index
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 )
 
 // NOTE: in the future it would be interesting lua filters
@@ -32,29 +35,32 @@ func NewMaxFilesizeFilter(size int64) DocFilter {
 }
 
 func NewExcludeFilenameFilter(excluded []string) DocFilter {
-	excludedSet := make(map[string]bool, len(excluded))
-	for _, filename := range excluded {
-		excludedSet[filename] = true
-	}
 	return DocFilter{
 		"Excluded Filename filter",
 		func(ip infoPath, _ io.ReadSeeker) bool {
-			_, ok := excludedSet[filepath.Base(ip.path)]
-			return !ok
+			filename := filepath.Base(ip.path)
+			return !slices.Contains(excluded, filename)
 		},
 	}
 }
 
 func NewIncludeFilenameFilter(included []string) DocFilter {
-	includedSet := make(map[string]bool, len(included))
-	for _, filename := range included {
-		includedSet[filename] = true
-	}
 	return DocFilter{
 		"Included Filename filter",
 		func(ip infoPath, _ io.ReadSeeker) bool {
-			_, ok := includedSet[filepath.Base(ip.path)]
-			return ok
+			filename := filepath.Base(ip.path)
+			return slices.Contains(included, filename)
+		},
+	}
+}
+
+// exclude files if it has a parent directory badParent
+func NewExcludeParentFilter(badParent string) DocFilter {
+	return DocFilter{
+		"Excluded Parent Directory filter",
+		func(ip infoPath, _ io.ReadSeeker) bool {
+
+			return !slices.Contains(strings.Split(ip.path, string(os.PathSeparator)), badParent)
 		},
 	}
 }
@@ -135,5 +141,5 @@ func yamlHeaderPos(r io.ReadSeeker) int64 {
 }
 
 func DefaultFilters() []DocFilter {
-	return []DocFilter{NewExtensionFilter(".md"), NewMaxFilesizeFilter(200 * 1024), YamlHeaderFilter}
+	return []DocFilter{NewExtensionFilter(".md"), NewMaxFilesizeFilter(200 * 1024), NewExcludeParentFilter("templates"), YamlHeaderFilter}
 }
