@@ -120,9 +120,10 @@ func (doc *Document) parseDateNode(node ast.Node) error {
 		return nil
 	}
 
-	var err error
-	if doc.Date, err = util.ParseDateTime(dateStr); err != nil {
+	if date, err := util.ParseDateTime(dateStr); err != nil {
 		return fmt.Errorf("Unable to parse date: %s", dateNode.Value)
+	} else {
+		doc.Date = date
 	}
 
 	return nil

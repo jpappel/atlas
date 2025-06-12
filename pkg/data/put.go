@@ -131,11 +131,9 @@ func (p *PutMany) documents(ctx context.Context) error {
 	//       future inserts
 	for _, doc := range p.pathDocs {
 		title := sql.NullString{String: doc.Title, Valid: doc.Title != ""}
-		dateUnix := doc.Date.Unix()
-		date := sql.NullInt64{Int64: dateUnix, Valid: dateUnix != 0}
+		date := sql.NullInt64{Int64: doc.Date.Unix(), Valid: !doc.Date.IsZero()}
 
-		filetimeUnix := doc.FileTime.Unix()
-		filetime := sql.NullInt64{Int64: filetimeUnix, Valid: filetimeUnix != 0}
+		filetime := sql.NullInt64{Int64: doc.FileTime.Unix(), Valid: !doc.FileTime.IsZero()}
 
 		meta := sql.NullString{String: doc.OtherMeta, Valid: doc.OtherMeta != ""}
 
