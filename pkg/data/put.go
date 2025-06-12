@@ -88,11 +88,9 @@ func (p PutMany) Insert(ctx context.Context) error {
 func (p *Put) document() error {
 	title := sql.NullString{String: p.Doc.Title, Valid: p.Doc.Title != ""}
 
-	dateUnix := p.Doc.Date.Unix()
-	date := sql.NullInt64{Int64: dateUnix, Valid: dateUnix != 0}
+	date := sql.NullInt64{Int64: p.Doc.Date.Unix(), Valid: !p.Doc.Date.IsZero()}
 
-	filetimeUnix := p.Doc.FileTime.Unix()
-	filetime := sql.NullInt64{Int64: filetimeUnix, Valid: filetimeUnix != 0}
+	filetime := sql.NullInt64{Int64: p.Doc.FileTime.Unix(), Valid: !p.Doc.FileTime.IsZero()}
 
 	meta := sql.NullString{String: p.Doc.OtherMeta, Valid: p.Doc.OtherMeta != ""}
 
