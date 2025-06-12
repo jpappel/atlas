@@ -6,6 +6,9 @@ func ParseDateTime(s string) (time.Time, error) {
 	dateFormats := []string{
 		"Jan _2, 2006",
 		"January 2, 2006",
+		"January 2 2006",
+		"Jan 2 2006",
+		"2006 January 2",
 		time.DateOnly,
 		time.DateTime,
 		time.Layout,
