@@ -262,7 +262,8 @@ func TestIndex_ParseOne(t *testing.T) {
 			path := tt.pathMaker(t)
 			tt.want.Path = path
 
-			got, gotErr := ParseDoc(path)
+			// TODO: add ParseOpts as test param
+			got, gotErr := ParseDoc(path, ParseOpts{ParseMeta: true})
 
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Errorf("Recieved unexpected error: want %v got %v", tt.wantErr, gotErr)

@@ -27,6 +27,13 @@ type Document struct {
 	Tags      []string  `yaml:"tags,omitempty" json:"tags"`
 	Links     []string  `yaml:"-" json:"links"`
 	OtherMeta string    `yaml:"-" json:"meta"`
+	parseOpts ParseOpts
+}
+
+type ParseOpts struct {
+	ParseMeta       bool
+	IgnoreDateError bool
+	IgnoreMetaError bool
 }
 
 type infoPath struct {
@@ -87,17 +94,21 @@ func (doc *Document) UnmarshalYAML(node ast.Node) error {
 		}
 
 		if keyPath == "$.date" {
-			if err := doc.parseDateNode(v); err != nil {
+			if err := doc.parseDateNode(v); err != nil && !doc.parseOpts.IgnoreDateError {
 				return err
 			}
 		} else if keyPath == "$.author" {
 			if err := doc.parseAuthor(v); err != nil {
 				return err
 			}
-		} else {
+		} else if doc.parseOpts.ParseMeta {
 			field, err := kv.MarshalYAML()
 			if err != nil {
-				return err
+				if doc.parseOpts.IgnoreMetaError {
+					continue
+				} else {
+					return err
+				}
 			}
 			buf.Write(field)
 			buf.WriteByte('\n')
@@ -314,9 +325,8 @@ func (idx Index) Filter(paths []string, numWorkers uint) []string {
 	return fPaths
 }
 
-func ParseDoc(path string) (*Document, error) {
-	doc := &Document{}
-	doc.Path = path
+func ParseDoc(path string, opts ParseOpts) (*Document, error) {
+	doc := &Document{Path: path, parseOpts: opts}
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -336,7 +346,6 @@ func ParseDoc(path string) (*Document, error) {
 		return nil, fmt.Errorf("Can't find YAML header in %s", path)
 	}
 
-	// FIXME: decoder reads past yaml header into document
 	if err := yaml.NewDecoder(io.LimitReader(f, pos)).Decode(doc); err != nil {
 		return nil, errors.Join(ErrHeaderParse, err)
 	}
@@ -345,17 +354,17 @@ func ParseDoc(path string) (*Document, error) {
 	return doc, nil
 }
 
-func ParseDocs(paths []string, numWorkers uint) map[string]*Document {
+func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) map[string]*Document {
 	jobs := make(chan string, numWorkers)
-	results := make(chan Document, numWorkers)
+	results := make(chan *Document, numWorkers)
 	docs := make(map[string]*Document, len(paths))
 	wg := &sync.WaitGroup{}
 
 	wg.Add(int(numWorkers))
 	for range numWorkers {
-		go func(jobs <-chan string, results chan<- Document, wg *sync.WaitGroup) {
+		go func(jobs <-chan string, results chan<- *Document, wg *sync.WaitGroup) {
 			for path := range jobs {
-				doc, err := ParseDoc(path)
+				doc, err := ParseDoc(path, opts)
 				if err != nil {
 					// TODO: propagate error
 					slog.Error("Error occured while parsing file",
@@ -364,7 +373,7 @@ func ParseDocs(paths []string, numWorkers uint) map[string]*Document {
 					continue
 				}
 
-				results <- *doc
+				results <- doc
 			}
 			wg.Done()
 		}(jobs, results, wg)
@@ -377,13 +386,13 @@ func ParseDocs(paths []string, numWorkers uint) map[string]*Document {
 		close(jobs)
 	}(jobs, paths)
 
-	go func(results chan Document, wg *sync.WaitGroup) {
+	go func(results chan *Document, wg *sync.WaitGroup) {
 		wg.Wait()
 		close(results)
 	}(results, wg)
 
 	for doc := range results {
-		docs[doc.Path] = &doc
+		docs[doc.Path] = doc
 	}
 
 	return docs

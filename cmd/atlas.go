@@ -72,8 +72,8 @@ func main() {
 		CustomFormat string
 	}{}
 	indexFlags := struct {
-		ignoreBadDates bool
-		Filters        []index.DocFilter
+		Filters []index.DocFilter
+		index.ParseOpts
 	}{}
 
 	if len(args) < 1 {
@@ -107,7 +107,9 @@ func main() {
 
 		queryFs.Parse(args[1:])
 	case "index":
-		indexFs.BoolVar(&indexFlags.ignoreBadDates, "ignoreBadDates", false, "ignore malformed dates while indexing")
+		indexFs.BoolVar(&indexFlags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
+		indexFs.BoolVar(&indexFlags.IgnoreMetaError, "ignoreMetaError", false, "ignore errors while parsing general YAML header info")
+		indexFs.BoolVar(&indexFlags.ParseMeta, "parseMeta", true, "parse YAML header values other title, authors, date, tags")
 
 		customFilters := false
 		indexFlags.Filters = index.DefaultFilters()
@@ -198,7 +200,7 @@ func main() {
 		filteredFiles := idx.Filter(traversedFiles, globalFlags.NumWorkers)
 		fmt.Print(", Filtered ", len(filteredFiles))
 
-		idx.Documents = index.ParseDocs(filteredFiles, globalFlags.NumWorkers, indexFlags.ignoreBadDates)
+		idx.Documents = index.ParseDocs(filteredFiles, globalFlags.NumWorkers, indexFlags.ParseOpts)
 		fmt.Print(", Parsed ", len(idx.Documents), "\n")
 
 		if err := querier.Put(idx); err != nil {
