@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
+	"github.com/jpappel/atlas/pkg/shell"
 )
 
 const ExitCommand = 2           // exit because of a command parsing error
@@ -38,10 +40,11 @@ func addGlobalFlagUsage(fs *flag.FlagSet) func() {
 
 func printHelp() {
 	fmt.Println("atlas is a note indexing and querying tool")
-	fmt.Printf("\nUsage:\n  %s <command>\n\n", os.Args[0])
+	fmt.Printf("\nUsage:\n  %s [global-flags] <command>\n\n", os.Args[0])
 	fmt.Println("Commands:")
 	fmt.Println("  index - build, update, or modify the index")
 	fmt.Println("  query - search against the index")
+	fmt.Println("  shell - start a debug query shell")
 	fmt.Println("  help  - print this help then exit")
 }
 
@@ -55,9 +58,11 @@ func main() {
 
 	indexFs := flag.NewFlagSet("index flags", flag.ExitOnError)
 	queryFs := flag.NewFlagSet("query flags", flag.ExitOnError)
+	shellFs := flag.NewFlagSet("debug shell flags", flag.ExitOnError)
 
 	indexFs.Usage = addGlobalFlagUsage(indexFs)
 	queryFs.Usage = addGlobalFlagUsage(queryFs)
+	shellFs.Usage = addGlobalFlagUsage(shellFs)
 
 	flag.Parse()
 	args := flag.Args()
@@ -71,7 +76,7 @@ func main() {
 		Filters        []index.DocFilter
 	}{}
 
-	if len(args) < 2 {
+	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "No Command provided")
 		printHelp()
 		fmt.Fprintln(flag.CommandLine.Output(), "\nGlobal Flags:")
@@ -129,6 +134,8 @@ func main() {
 		printHelp()
 		flag.PrintDefaults()
 		os.Exit(0)
+	case "shell":
+		shellFs.Parse(args[1:])
 	default:
 		fmt.Fprintln(os.Stderr, "Unrecognized command: ", command)
 		printHelp()
@@ -196,6 +203,12 @@ func main() {
 
 		if err := querier.Put(idx); err != nil {
 			panic(err)
+		}
+	case "shell":
+		state := make(shell.State)
+		interpreter := shell.NewInterpreter(state, os.Stdin)
+		if err := interpreter.Run(); err != nil && err != io.EOF {
+			os.Exit(1)
 		}
 	}
 
