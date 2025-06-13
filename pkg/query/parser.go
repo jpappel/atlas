@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"iter"
 	"os"
 	"slices"
 	"strings"
@@ -281,6 +282,60 @@ func (c Clause) buildString(b *strings.Builder, level int) {
 	b.WriteByte('\n')
 	writeIndent(b, level)
 	b.WriteString(")\n")
+}
+
+// Depth of tree via recursion
+func (root Clause) Depth() int {
+	maxHeight := 1
+	for _, child := range root.Clauses {
+		maxHeight = max(maxHeight, child.Depth()+1)
+	}
+	return maxHeight
+}
+
+func (root *Clause) DFS() iter.Seq[*Clause] {
+	return func(yield func(*Clause) bool) {
+		stack := make([]*Clause, 0, len(root.Clauses))
+		stack = append(stack, root)
+
+		for len(stack) != 0 {
+			node := stack[len(stack)-1]
+
+			if !yield(node) {
+				return
+			}
+
+			stack := stack[:len(stack)-1]
+			stack = append(stack, node.Clauses...)
+		}
+	}
+}
+
+func (root *Clause) BFS() iter.Seq[*Clause] {
+	return func(yield func(*Clause) bool) {
+		queue := make([]*Clause, 64*len(root.Clauses))
+		queue = append(queue, root)
+		read := 0
+		write := 1
+		size := 1
+
+		// FIXME: can potentially discard values if queue is too small
+		for size != 0 {
+			node := queue[read]
+
+			if !yield(node) {
+				return
+			}
+			read = (read + 1) % len(queue)
+			size -= 1
+
+			for _, child := range node.Clauses {
+				queue[write] = child
+				write = (write + 1) % len(queue)
+				size += 1
+			}
+		}
+	}
 }
 
 func Parse(tokens []Token) (*Clause, error) {
