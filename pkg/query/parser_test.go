@@ -19,6 +19,26 @@ func TestClause_Flatten(t *testing.T) {
 			query.Clause{},
 		},
 		{
+			"empty with child",
+			&query.Clause{
+				Operator: query.COP_OR,
+				Clauses: []*query.Clause{
+					{
+						Operator: query.COP_AND,
+						Statements: []query.Statement{
+							{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
+						},
+					},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
+				},
+			},
+		},
+		{
 			"already flat",
 			&query.Clause{
 				Operator: query.COP_AND,
@@ -166,6 +186,36 @@ func TestClause_Flatten(t *testing.T) {
 
 			if gotL != wantL {
 				t.Errorf("Incorrect number of children clauses: got %d want %d\n", gotL, wantL)
+			}
+		})
+	}
+}
+
+func TestParse(t *testing.T) {
+	tests := []struct {
+		name string // description of this test case
+		// Named input parameters for target function.
+		tokens  []query.Token
+		want    *query.Clause
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotErr := query.Parse(tt.tokens)
+			if gotErr != nil {
+				if !tt.wantErr {
+					t.Errorf("Parse() failed: %v", gotErr)
+				}
+				return
+			}
+			if tt.wantErr {
+				t.Fatal("Parse() succeeded unexpectedly")
+			}
+			// TODO: update the condition below to compare got with tt.want.
+			if true {
+				t.Errorf("Parse() = %v, want %v", got, tt.want)
 			}
 		})
 	}

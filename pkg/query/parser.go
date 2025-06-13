@@ -53,8 +53,11 @@ type Statement struct {
 	Operator opType
 	Value    Valuer
 }
+
+type Statements []Statement
+
 type Clause struct {
-	Statements []Statement
+	Statements Statements
 	Clauses    []*Clause
 	Operator   clauseOperator
 }
@@ -101,7 +104,7 @@ func (v StringValue) Compare(other Valuer) int {
 }
 
 type DatetimeValue struct {
-	d time.Time
+	D time.Time
 }
 
 func (v DatetimeValue) Type() valuerType {
@@ -114,7 +117,7 @@ func (v DatetimeValue) Compare(other Valuer) int {
 		return 0
 	}
 
-	return v.d.Compare(o.d)
+	return v.D.Compare(o.D)
 }
 
 var _ Valuer = StringValue{}
@@ -230,6 +233,16 @@ func (root *Clause) Flatten() {
 		stack = stack[:top]
 
 		hasMerged := false
+
+		// merge if only child clause
+		if len(node.Statements) == 0 && len(node.Clauses) == 1 {
+			child := node.Clauses[0]
+
+			node.Operator = child.Operator
+			node.Statements = child.Statements
+			node.Clauses = child.Clauses
+		}
+
 		// cannot be "modernized", node.Clauses is modified in loop
 		for i := 0; i < len(node.Clauses); i++ {
 			child := node.Clauses[i]
@@ -291,6 +304,15 @@ func (root Clause) Depth() int {
 		maxHeight = max(maxHeight, child.Depth()+1)
 	}
 	return maxHeight
+}
+
+// Order of clause tree
+func (root Clause) Order() int {
+	count := 0
+	for range root.DFS() {
+		count++
+	}
+	return count
 }
 
 func (root *Clause) DFS() iter.Seq[*Clause] {
