@@ -5,7 +5,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -14,6 +16,62 @@ import (
 type DocFilter struct {
 	Name   string
 	Filter func(infoPath, io.ReadSeeker) bool
+}
+
+const FilterHelp string = `
+YAMLHeader                                      - reject files without YAML header
+Ext,Extension_<ext>                             - accept files ending with <ext>
+MaxSize,MaxFilesize_<size>                      - accept files of at most <size> bytes
+ExcludeName,ExcludeFilename_<name1>,...,<nameN> - reject files with names in list
+IncludeName,IncludeFilename_<name1>,...,<nameN> - accept files with names in list
+ExcludeParent_<dir>                             - reject files if <dir> is a parent directory
+IncludeRegex_<pattern>                          - accept files whose path matches <pattern>
+ExcludeRegex_<pattern>                          - reject files whose path matches <pattern>`
+
+func ParseFilter(s string) (DocFilter, error) {
+	name, param, found := strings.Cut(s, "_")
+
+	// paramless filters
+	if name == "YAMLHeader" {
+		return YamlHeaderFilter, nil
+	}
+
+	if !found {
+		return DocFilter{}, fmt.Errorf("Expected parameter with filter %s", name)
+	}
+
+	switch name {
+	case "Ext", "Extension":
+		return NewExtensionFilter(param), nil
+	case "MaxSize", "MaxFilesize":
+		size, err := strconv.ParseInt(param, 10, 64)
+		if err != nil {
+			return DocFilter{}, err
+		}
+		return NewMaxFilesizeFilter(size), nil
+	case "ExcludeName", "ExcludeFilename":
+		// FIXME: support escaped commas
+		return NewExcludeFilenameFilter(strings.Split(param, ",")), nil
+	case "IncludeName", "IncludeFilename":
+		// FIXME: support escaped commas
+		return NewIncludeFilenameFilter(strings.Split(param, ",")), nil
+	case "ExcludeParent":
+		return NewExcludeParentFilter(param), nil
+	case "IncludeRegex":
+		filter, err := NewIncludeRegexFilter(param)
+		if err != nil {
+			return DocFilter{}, err
+		}
+		return filter, nil
+	case "ExcludeRegex":
+		filter, err := NewIncludeRegexFilter(param)
+		if err != nil {
+			return DocFilter{}, err
+		}
+		return filter, nil
+	default:
+		return DocFilter{}, fmt.Errorf("Unrecognized filter %s, see FILTERS", s)
+	}
 }
 
 func NewExtensionFilter(ext string) DocFilter {
@@ -57,12 +115,38 @@ func NewIncludeFilenameFilter(included []string) DocFilter {
 // exclude files if it has a parent directory badParent
 func NewExcludeParentFilter(badParent string) DocFilter {
 	return DocFilter{
-		"Excluded Parent Directory filter",
+		"Excluded Parent Directory filter: " + badParent,
 		func(ip infoPath, _ io.ReadSeeker) bool {
-
 			return !slices.Contains(strings.Split(ip.path, string(os.PathSeparator)), badParent)
 		},
 	}
+}
+
+func NewIncludeRegexFilter(pattern string) (DocFilter, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return DocFilter{}, fmt.Errorf("Cannot compile regex: %v", err)
+	}
+
+	return DocFilter{
+		"Included Regex Filter: " + pattern,
+		func(ip infoPath, _ io.ReadSeeker) bool {
+			return re.MatchString(ip.path)
+		},
+	}, nil
+}
+func NewExcludeRegexFilter(pattern string) (DocFilter, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return DocFilter{}, fmt.Errorf("Cannot compile regex: %v", err)
+	}
+
+	return DocFilter{
+		"Excluded Regex Filter: " + pattern,
+		func(ip infoPath, _ io.ReadSeeker) bool {
+			return !re.MatchString(ip.path)
+		},
+	}, nil
 }
 
 var YamlHeaderFilter = DocFilter{
