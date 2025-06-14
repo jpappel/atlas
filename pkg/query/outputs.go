@@ -2,15 +2,12 @@ package query
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jpappel/atlas/pkg/index"
 )
 
-var ErrUnrecognizedOutputToken = errors.New("Unrecognized output token")
-var ErrExpectedMoreStringTokens = errors.New("Expected more string tokens")
 
 const DefaultOutputFormat string = "%p %T %d authors:%a tags:%t"
 

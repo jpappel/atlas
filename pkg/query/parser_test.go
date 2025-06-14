@@ -163,8 +163,9 @@ func TestClause_Flatten(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		o := query.Optimizer{}
 		t.Run(tt.name, func(t *testing.T) {
-			tt.root.Flatten()
+			o.Flatten(tt.root)
 
 			slices.SortFunc(tt.root.Statements, query.StatementCmp)
 			slices.SortFunc(tt.expected.Statements, query.StatementCmp)

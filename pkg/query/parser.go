@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"iter"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -217,57 +216,31 @@ func tokToOp(t queryTokenType) opType {
 	}
 }
 
+// Apply negation to a statements operator
+func (s *Statement) Simplify() {
+	if s.Negated && s.Operator != OP_PIPE && s.Operator != OP_ARG && s.Operator != OP_AP {
+		s.Negated = false
+		switch s.Operator {
+		case OP_EQ:
+			s.Operator = OP_NE
+		case OP_NE:
+			s.Operator = OP_EQ
+		case OP_LT:
+			s.Operator = OP_GE
+		case OP_LE:
+			s.Operator = OP_GT
+		case OP_GE:
+			s.Operator = OP_LT
+		case OP_GT:
+			s.Operator = OP_LE
+		}
+	}
+}
+
 func (c Clause) String() string {
 	b := &strings.Builder{}
 	c.buildString(b, 0)
 	return b.String()
-}
-
-// Merge child clauses with their parents when applicable
-func (root *Clause) Flatten() {
-	stack := make([]*Clause, 0, len(root.Clauses))
-	stack = append(stack, root)
-	for len(stack) != 0 {
-		top := len(stack) - 1
-		node := stack[top]
-		stack = stack[:top]
-
-		hasMerged := false
-
-		// merge if only child clause
-		if len(node.Statements) == 0 && len(node.Clauses) == 1 {
-			child := node.Clauses[0]
-
-			node.Operator = child.Operator
-			node.Statements = child.Statements
-			node.Clauses = child.Clauses
-		}
-
-		// cannot be "modernized", node.Clauses is modified in loop
-		for i := 0; i < len(node.Clauses); i++ {
-			child := node.Clauses[i]
-
-			// merge because of commutativity
-			if node.Operator == child.Operator {
-				hasMerged = true
-				node.Statements = append(node.Statements, child.Statements...)
-				node.Clauses = append(node.Clauses, child.Clauses...)
-			} else {
-				stack = append(stack, child)
-			}
-		}
-
-		if hasMerged {
-			numChildren := len(stack) - top
-			if numChildren > 0 {
-				node.Clauses = slices.Grow(node.Clauses, numChildren)
-				node.Clauses = node.Clauses[:numChildren]
-				copy(node.Clauses, stack[top:top+numChildren])
-			} else {
-				node.Clauses = nil
-			}
-		}
-	}
 }
 
 func (c Clause) buildString(b *strings.Builder, level int) {
