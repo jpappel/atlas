@@ -74,7 +74,7 @@ func (o Optimizer) Flatten(root *Clause) {
 
 func (o Optimizer) Compact(c *Clause) {
 	for clause := range c.DFS() {
-		clause.Statements = slices.CompactFunc(c.Statements, StatementEq)
+		clause.Statements = slices.CompactFunc(clause.Statements, StatementEq)
 	}
 }
 

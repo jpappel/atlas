@@ -12,10 +12,11 @@ import (
 type ValueType int
 
 const (
-	INVALID ValueType = iota
-	STRING
-	TOKENS
-	CLAUSE
+	VAL_INVALID ValueType = iota
+	VAL_INT
+	VAL_STRING
+	VAL_TOKENS
+	VAL_CLAUSE
 )
 
 type Value struct {
@@ -25,27 +26,50 @@ type Value struct {
 
 type State map[string]Value
 
+func (t ValueType) String() string {
+	switch t {
+	case VAL_INVALID:
+		return "Invalid"
+	case VAL_INT:
+		return "Integer"
+	case VAL_STRING:
+		return "String"
+	case VAL_TOKENS:
+		return "Tokens"
+	case VAL_CLAUSE:
+		return "Clause"
+	default:
+		return "Unkown"
+	}
+}
+
 func (v Value) String() string {
 	switch v.Type {
-	case STRING:
+	case VAL_INT:
+		i, ok := v.Val.(int)
+		if !ok {
+			return "Corrupted Type (expected int)"
+		}
+		return fmt.Sprint(i)
+	case VAL_STRING:
 		s, ok := v.Val.(string)
 		if !ok {
 			return "Corrupted Type (expected string)"
 		}
 		return s
-	case TOKENS:
+	case VAL_TOKENS:
 		ts, ok := v.Val.([]query.Token)
 		if !ok {
 			return "Corrupted Type (expected []query.Token)"
 		}
 		return query.TokensStringify(ts)
-	case CLAUSE:
+	case VAL_CLAUSE:
 		rootClause, ok := v.Val.(*query.Clause)
 		if !ok {
-			return "Corrupted Type (expected query.Clause)"
+			return "Corrupted Type (expected *query.Clause)"
 		}
 		return rootClause.String()
-	case INVALID:
+	case VAL_INVALID:
 		return "Invalid"
 	}
 	return fmt.Sprintf("Unknown @ %p", v.Val)
@@ -58,13 +82,15 @@ func (s State) String() string {
 		b.WriteString(k)
 		b.WriteByte(':')
 		switch v.Type {
-		case INVALID:
+		case VAL_INVALID:
 			b.WriteString(" Invalid")
-		case STRING:
+		case VAL_INT:
+			b.WriteString(" Integer")
+		case VAL_STRING:
 			b.WriteString(" String")
-		case TOKENS:
+		case VAL_TOKENS:
 			b.WriteString(" Tokens")
-		case CLAUSE:
+		case VAL_CLAUSE:
 			b.WriteString(" Clause")
 		default:
 			fmt.Fprintf(&b, " Unknown (%d)", v.Val)
@@ -88,7 +114,7 @@ func (s State) CmdTokenize(input string) (Value, bool) {
 		if !ok {
 			fmt.Fprintln(os.Stderr, "Cannot tokenize: no variable with name", input)
 			return Value{}, false
-		} else if variable.Type != STRING {
+		} else if variable.Type != VAL_STRING {
 			fmt.Fprintln(os.Stderr, "Cannot tokenize: variable is not a string")
 			return Value{}, false
 		}
@@ -101,7 +127,7 @@ func (s State) CmdTokenize(input string) (Value, bool) {
 		}
 	}
 	tokens := query.Lex(rawQuery)
-	return Value{TOKENS, tokens}, true
+	return Value{VAL_TOKENS, tokens}, true
 }
 
 func (s State) CmdParse(args string) (Value, error) {
@@ -121,7 +147,7 @@ func (s State) CmdParse(args string) (Value, error) {
 		if !ok {
 			fmt.Fprintln(os.Stderr, "Cannot parse: no variable with name", args)
 			return Value{}, errors.New("variable does not exist")
-		} else if variable.Type != TOKENS {
+		} else if variable.Type != VAL_TOKENS {
 			fmt.Fprintln(os.Stderr, "Cannot parse: variable is not []query.Tokens")
 			return Value{}, errors.New("bad variable type")
 		}
@@ -138,5 +164,5 @@ func (s State) CmdParse(args string) (Value, error) {
 	if err != nil {
 		return Value{}, err
 	}
-	return Value{CLAUSE, *clause}, err
+	return Value{VAL_CLAUSE, *clause}, err
 }

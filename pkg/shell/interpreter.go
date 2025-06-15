@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"github.com/jpappel/atlas/pkg/query"
 )
@@ -34,6 +36,7 @@ const (
 
 	// commands
 	ITOK_CMD_HELP
+	ITOK_CMD_CLEAR
 	ITOK_CMD_LET
 	ITOK_CMD_DEL
 	ITOK_CMD_PRINT
@@ -41,7 +44,7 @@ const (
 	ITOK_CMD_SLICE
 	ITOK_CMD_REMATCH
 	ITOK_CMD_REPATTERN
-	ITOK_CMD_FLATTEN
+	ITOK_CMD_OPTIMIZE
 	ITOK_CMD_TOKENIZE
 	ITOK_CMD_PARSE
 )
@@ -89,9 +92,14 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 		case ITOK_CMD_HELP:
 			printHelp()
 			break
+		case ITOK_CMD_CLEAR:
+			fmt.Println("\033[H\033[J")
+			break
 		case ITOK_CMD_LET:
-			interpreter.State[variableName] = carryValue
-			carryValue.Type = INVALID
+			if variableName != "" {
+				interpreter.State[variableName] = carryValue
+				carryValue.Type = VAL_INVALID
+			}
 			break
 		case ITOK_CMD_DEL:
 			if len(tokens) == 1 {
@@ -101,7 +109,7 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 				// HACK: variable name is not evaluated correctly so just look at the next token
 				delete(interpreter.State, tokens[i+1].Text)
 			}
-			carryValue.Type = INVALID
+			carryValue.Type = VAL_INVALID
 			break
 		case ITOK_CMD_PRINT:
 			if len(tokens) == 1 {
@@ -110,12 +118,12 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 			} else {
 				carryValue, ok = interpreter.State[tokens[1].Text]
 				if !ok {
-					return false, errors.New("No variable found with name " + tokens[1].Text)
+					return false, fmt.Errorf("No variable %s", tokens[1].Text)
 				}
 			}
 		case ITOK_CMD_REMATCH:
-			if carryValue.Type != STRING {
-				return false, errors.New("Unable to match against argument")
+			if carryValue.Type != VAL_STRING {
+				return false, fmt.Errorf("Unable to march against argument of type: %s", carryValue.Type)
 			}
 
 			body, ok := carryValue.Val.(string)
@@ -140,20 +148,19 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 			fmt.Println(query.LexRegexPattern)
 			break
 		case ITOK_CMD_TOKENIZE:
-			if carryValue.Type != STRING {
-				return false, errors.New("Unable to tokenize argument")
+			if carryValue.Type != VAL_STRING {
+				return false, fmt.Errorf("Unable to tokenize argument of type: %s", carryValue.Type)
 			}
 
 			rawQuery, ok := carryValue.Val.(string)
 			if !ok {
 				return true, errors.New("Type corruption during tokenize, expected string")
 			}
-			carryValue.Type = TOKENS
+			carryValue.Type = VAL_TOKENS
 			carryValue.Val = query.Lex(rawQuery)
 		case ITOK_CMD_PARSE:
-			if carryValue.Type != TOKENS {
-				fmt.Println("Carry type: ", carryValue.Type)
-				return false, errors.New("Unable to parse argument")
+			if carryValue.Type != VAL_TOKENS {
+				return false, fmt.Errorf("Unable to parse argument of type: %s", carryValue.Type)
 			}
 
 			queryTokens, ok := carryValue.Val.([]query.Token)
@@ -165,45 +172,84 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			carryValue.Type = CLAUSE
+			carryValue.Type = VAL_CLAUSE
 			carryValue.Val = clause
-		case ITOK_CMD_FLATTEN:
-			if carryValue.Type != CLAUSE {
-				fmt.Println("Carry type: ", carryValue.Type)
-				return false, errors.New("Unable to parse argument")
+		case ITOK_CMD_OPTIMIZE:
+			if carryValue.Type != VAL_CLAUSE {
+				return false, fmt.Errorf("Unable to flatten argument of type: %s", carryValue)
 			}
 
 			clause, ok := carryValue.Val.(*query.Clause)
 			if !ok {
-				return true, errors.New("Type corruption during parse, expected []query.Tokens")
+				return true, errors.New("Type corruption during flatten, expected *query.Clause")
 			}
 
-			clause.Flatten()
-			carryValue.Type = CLAUSE
+			o := query.Optimizer{}
+			switch t.Text {
+			case "flatten":
+				o.Flatten(clause)
+			case "compact":
+				o.Compact(clause)
+			default:
+				return false, fmt.Errorf("Unrecognized optimization: %s", t.Text)
+			}
+
+			carryValue.Type = VAL_CLAUSE
 			carryValue.Val = clause
 		case ITOK_VAR_NAME:
 			// NOTE: very brittle, only allows expansion of a single variable
 			if i == len(tokens)-1 {
 				carryValue, ok = interpreter.State[t.Text]
 				if !ok {
-					return false, errors.New("No variable: " + t.Text)
+					return false, fmt.Errorf("No variable: %s", t.Text)
 				}
 			} else {
 				variableName = t.Text
 			}
 		case ITOK_VAL_STR:
-			carryValue.Type = STRING
+			carryValue.Type = VAL_STRING
 			carryValue.Val = t.Text
+		case ITOK_VAL_INT:
+			val, err := strconv.Atoi(t.Text)
+			if err != nil {
+				return false, fmt.Errorf("Unable to parse as integer: %v", err)
+			}
+			carryValue.Type = VAL_INT
+			carryValue.Val = val
 		case ITOK_CMD_LEN:
-			fmt.Println("not implemented yet ;)")
-			break
+			var length int
+			switch cType := carryValue.Type; cType {
+			case VAL_STRING:
+				s, ok := carryValue.Val.(string)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during len, expected string")
+				}
+				length = len(s)
+			case VAL_TOKENS:
+				toks, ok := carryValue.Val.([]query.Token)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during len, expected []query.Token")
+				}
+				length = len(toks)
+			default:
+				return false, fmt.Errorf("Unable to get length of argument with type: %s", carryValue.Type)
+			}
+			carryValue.Type = VAL_INT
+			carryValue.Val = length
 		case ITOK_CMD_SLICE:
+			// TODO: get start and end of range
+			switch cType := carryValue.Type; cType {
+			case VAL_STRING:
+			case VAL_TOKENS:
+			default:
+				return false, fmt.Errorf("Cannot slice argument: %v", cType)
+			}
 			fmt.Println("not implemented yet ;)")
 			break
 		}
 	}
 
-	if carryValue.Type != INVALID {
+	if carryValue.Type != VAL_INVALID {
 		fmt.Println(carryValue)
 		interpreter.State["_"] = carryValue
 	}
@@ -226,6 +272,8 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 
 		if trimmedWord == "help" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_HELP})
+		} else if trimmedWord == "clear" {
+			tokens = append(tokens, IToken{Type: ITOK_CMD_CLEAR})
 		} else if trimmedWord == "let" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_LET})
 		} else if trimmedWord == "del" {
@@ -244,8 +292,8 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_TOKENIZE})
 		} else if trimmedWord == "parse" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
-		} else if trimmedWord == "flatten" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_FLATTEN})
+		} else if l := len("optimize_"); len(trimmedWord) > l && trimmedWord[:l] == "optimize_" {
+			tokens = append(tokens, IToken{ITOK_CMD_OPTIMIZE, trimmedWord[l:]})
 		} else if prevType == ITOK_CMD_LET {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_DEL {
@@ -268,11 +316,13 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			}
 		} else if prevType == ITOK_CMD_PARSE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_CMD_FLATTEN {
+		} else if prevType == ITOK_CMD_OPTIMIZE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAR_NAME && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
 			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
+		} else if prevType == ITOK_VAR_NAME && unicode.IsDigit(rune(trimmedWord[0])) {
+			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
 		} else if prevType == ITOK_VAL_STR {
 			tokens[len(tokens)-1].Text += " " + word
 		} else {
@@ -328,17 +378,21 @@ func (interpreter Interpreter) Run() error {
 }
 
 func printHelp() {
-	fmt.Println("Commands: help, let, del, print, tokenize, parse")
+	fmt.Println("Shitty debug shell for atlas")
 	fmt.Println("help                                  - print this help")
+	fmt.Println("clear                                 - clear the screen")
 	fmt.Println("let name (string|tokens|clause)       - save value to a variable")
 	fmt.Println("del [name]                            - delete a variable or all variables")
 	fmt.Println("print [name]                          - print a variable or all variables")
 	fmt.Println("slice (string|tokens|name) start stop - slice a string or tokens from start to stop")
+	fmt.Println("len (string|tokens|name)              - length of a string or token slice")
 	fmt.Println("rematch (string|name)                 - match against regex for querylang spec")
 	fmt.Println("repattern                             - print regex for querylang")
 	fmt.Println("tokenize (string|name)                - tokenize a string")
 	fmt.Println("        ex. tokenize `author:me")
 	fmt.Println("parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Println("flatten (clause|name)                 - flatten a clause")
+	fmt.Println("optimize_<subcommand> (clause|name)   - optimize clause tree")
+	fmt.Println("         flatten                      - flatten clauses")
+	fmt.Println("         compact                      - compact equivalent statements")
 	fmt.Println("\nBare commands which return a value assign to an implicit variable _")
 }
