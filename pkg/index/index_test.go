@@ -1,4 +1,4 @@
-package index
+package index_test
 
 import (
 	"errors"
@@ -7,16 +7,18 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/jpappel/atlas/pkg/index"
 )
 
-var indexCases map[string]func(t *testing.T) Index
+var indexCases map[string]func(t *testing.T) index.Index
 
 func init() {
-	indexCases = make(map[string]func(t *testing.T) Index)
+	indexCases = make(map[string]func(t *testing.T) index.Index)
 
-	indexCases["single file"] = func(t *testing.T) Index {
+	indexCases["single file"] = func(t *testing.T) index.Index {
 		root := t.TempDir()
-		index := Index{Root: root, Filters: []DocFilter{NewExtensionFilter(".md")}}
+		index := index.Index{Root: root, Filters: []index.DocFilter{index.NewExtensionFilter(".md")}}
 
 		f, err := os.Create(root + "/a_file.md")
 		if err != nil {
@@ -27,16 +29,16 @@ func init() {
 		return index
 	}
 
-	indexCases["large file"] = func(t *testing.T) Index {
+	indexCases["large file"] = func(t *testing.T) index.Index {
 		root := t.TempDir()
-		index := Index{Root: root}
+		index := index.Index{Root: root}
 
 		return index
 	}
 
-	indexCases["worker saturation"] = func(t *testing.T) Index {
+	indexCases["worker saturation"] = func(t *testing.T) index.Index {
 		root := t.TempDir()
-		index := Index{Root: root}
+		index := index.Index{Root: root}
 
 		permission := os.FileMode(0o777)
 		for _, dirName := range []string{"a", "b", "c", "d", "e", "f"} {
@@ -61,7 +63,7 @@ func init() {
 func TestIndex_Traverse(t *testing.T) {
 	tests := []struct {
 		name       string
-		indexCase  func(t *testing.T) Index
+		indexCase  func(t *testing.T) index.Index
 		numWorkers uint
 		want       []string
 	}{
@@ -104,7 +106,7 @@ func TestIndex_Filter(t *testing.T) {
 	tests := []struct {
 		name       string
 		paths      []string
-		indexCase  func(t *testing.T) Index
+		indexCase  func(t *testing.T) index.Index
 		numWorkers uint
 		want       []string
 	}{
@@ -154,7 +156,8 @@ func TestIndex_ParseOne(t *testing.T) {
 	tests := []struct {
 		name      string
 		pathMaker func(t *testing.T) string
-		want      *Document
+		parseOpts index.ParseOpts
+		want      *index.Document
 		wantErr   error
 	}{
 		{
@@ -166,7 +169,8 @@ func TestIndex_ParseOne(t *testing.T) {
 				f.WriteString("---\ntitle: A title\n---\n")
 				return path
 			},
-			&Document{Title: "A title"},
+			index.ParseOpts{},
+			&index.Document{Title: "A title"},
 			nil,
 		},
 		{
@@ -184,7 +188,8 @@ func TestIndex_ParseOne(t *testing.T) {
 
 				return path
 			},
-			&Document{Tags: []string{"a", "b", "c"}},
+			index.ParseOpts{},
+			&index.Document{Tags: []string{"a", "b", "c"}},
 			nil,
 		},
 		{
@@ -197,7 +202,8 @@ func TestIndex_ParseOne(t *testing.T) {
 
 				return path
 			},
-			&Document{Date: time.Date(2025, time.May, 1, 0, 0, 0, 0, time.UTC)},
+			index.ParseOpts{},
+			&index.Document{Date: time.Date(2025, time.May, 1, 0, 0, 0, 0, time.UTC)},
 			nil,
 		},
 		{
@@ -210,7 +216,8 @@ func TestIndex_ParseOne(t *testing.T) {
 
 				return path
 			},
-			&Document{Authors: []string{"Rob Pike"}},
+			index.ParseOpts{},
+			&index.Document{Authors: []string{"Rob Pike"}},
 			nil,
 		},
 		{
@@ -223,7 +230,8 @@ func TestIndex_ParseOne(t *testing.T) {
 
 				return path
 			},
-			&Document{Authors: []string{"Robert Griesemer", "Rob Pike", "Ken Thompson"}},
+			index.ParseOpts{},
+			&index.Document{Authors: []string{"Robert Griesemer", "Rob Pike", "Ken Thompson"}},
 			nil,
 		},
 		{
@@ -238,7 +246,8 @@ func TestIndex_ParseOne(t *testing.T) {
 
 				return path
 			},
-			&Document{OtherMeta: "unknownKey: value\n"},
+			index.ParseOpts{ParseMeta: true},
+			&index.Document{OtherMeta: "unknownKey: value\n"},
 			nil,
 		},
 		{
@@ -253,8 +262,9 @@ func TestIndex_ParseOne(t *testing.T) {
 
 				return path
 			},
-			&Document{},
-			ErrHeaderParse,
+			index.ParseOpts{},
+			&index.Document{},
+			index.ErrHeaderParse,
 		},
 	}
 	for _, tt := range tests {
@@ -262,8 +272,7 @@ func TestIndex_ParseOne(t *testing.T) {
 			path := tt.pathMaker(t)
 			tt.want.Path = path
 
-			// TODO: add ParseOpts as test param
-			got, gotErr := ParseDoc(path, ParseOpts{ParseMeta: true})
+			got, gotErr := index.ParseDoc(path, tt.parseOpts)
 
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Errorf("Recieved unexpected error: want %v got %v", tt.wantErr, gotErr)

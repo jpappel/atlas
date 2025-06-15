@@ -15,7 +15,7 @@ import (
 
 type DocFilter struct {
 	Name   string
-	Filter func(infoPath, io.ReadSeeker) bool
+	Filter func(InfoPath, io.ReadSeeker) bool
 }
 
 const FilterHelp string = `
@@ -77,8 +77,8 @@ func ParseFilter(s string) (DocFilter, error) {
 func NewExtensionFilter(ext string) DocFilter {
 	return DocFilter{
 		ext + " Filter",
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			return filepath.Ext(ip.path) == ext
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			return filepath.Ext(ip.Path) == ext
 		},
 	}
 }
@@ -86,8 +86,8 @@ func NewExtensionFilter(ext string) DocFilter {
 func NewMaxFilesizeFilter(size int64) DocFilter {
 	return DocFilter{
 		fmt.Sprintf("Max Size Filter %d", size),
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			return ip.info.Size() <= size
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			return ip.Info.Size() <= size
 		},
 	}
 }
@@ -95,8 +95,8 @@ func NewMaxFilesizeFilter(size int64) DocFilter {
 func NewExcludeFilenameFilter(excluded []string) DocFilter {
 	return DocFilter{
 		"Excluded Filename filter",
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			filename := filepath.Base(ip.path)
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			filename := filepath.Base(ip.Path)
 			return !slices.Contains(excluded, filename)
 		},
 	}
@@ -105,8 +105,8 @@ func NewExcludeFilenameFilter(excluded []string) DocFilter {
 func NewIncludeFilenameFilter(included []string) DocFilter {
 	return DocFilter{
 		"Included Filename filter",
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			filename := filepath.Base(ip.path)
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			filename := filepath.Base(ip.Path)
 			return slices.Contains(included, filename)
 		},
 	}
@@ -116,8 +116,8 @@ func NewIncludeFilenameFilter(included []string) DocFilter {
 func NewExcludeParentFilter(badParent string) DocFilter {
 	return DocFilter{
 		"Excluded Parent Directory filter: " + badParent,
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			return !slices.Contains(strings.Split(ip.path, string(os.PathSeparator)), badParent)
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			return !slices.Contains(strings.Split(ip.Path, string(os.PathSeparator)), badParent)
 		},
 	}
 }
@@ -130,8 +130,8 @@ func NewIncludeRegexFilter(pattern string) (DocFilter, error) {
 
 	return DocFilter{
 		"Included Regex Filter: " + pattern,
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			return re.MatchString(ip.path)
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			return re.MatchString(ip.Path)
 		},
 	}, nil
 }
@@ -143,23 +143,21 @@ func NewExcludeRegexFilter(pattern string) (DocFilter, error) {
 
 	return DocFilter{
 		"Excluded Regex Filter: " + pattern,
-		func(ip infoPath, _ io.ReadSeeker) bool {
-			return !re.MatchString(ip.path)
+		func(ip InfoPath, _ io.ReadSeeker) bool {
+			return !re.MatchString(ip.Path)
 		},
 	}, nil
 }
 
 var YamlHeaderFilter = DocFilter{
 	"YAML Header Filter",
-	yamlHeaderFilterFunc,
-}
-
-func yamlHeaderFilterFunc(_ infoPath, r io.ReadSeeker) bool {
-	return yamlHeaderPos(r) > 0
+	func(_ InfoPath, rs io.ReadSeeker) bool {
+		return YamlHeaderPos(rs) > 0
+	},
 }
 
 // Position of the end of a yaml header, negative
-func yamlHeaderPos(r io.ReadSeeker) int64 {
+func YamlHeaderPos(r io.ReadSeeker) int64 {
 	const bufSize = 4096
 	buf := make([]byte, bufSize)
 

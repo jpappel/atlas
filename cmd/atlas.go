@@ -132,7 +132,7 @@ func main() {
 			})
 
 		indexFs.Parse(args[1:])
-	case "help", "--help", "-help":
+	case "help":
 		printHelp()
 		flag.PrintDefaults()
 		os.Exit(0)

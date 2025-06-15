@@ -290,17 +290,17 @@ func (root Clause) Order() int {
 
 func (root *Clause) DFS() iter.Seq[*Clause] {
 	return func(yield func(*Clause) bool) {
-		stack := make([]*Clause, 0, len(root.Clauses))
+		stack := make([]*Clause, 0, len(root.Clauses)+1)
 		stack = append(stack, root)
 
 		for len(stack) != 0 {
 			node := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
 
 			if !yield(node) {
 				return
 			}
 
-			stack := stack[:len(stack)-1]
 			stack = append(stack, node.Clauses...)
 		}
 	}

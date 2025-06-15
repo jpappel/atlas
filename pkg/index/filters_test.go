@@ -1,10 +1,12 @@
-package index
+package index_test
 
 import (
 	"bytes"
 	"io"
 	"os"
 	"testing"
+
+	"github.com/jpappel/atlas/pkg/index"
 )
 
 func noYamlHeader() io.ReadSeeker {
@@ -27,7 +29,7 @@ func trailingYamlHeader() io.ReadSeeker {
 	return bytes.NewReader(buf)
 }
 
-func extensionless(t *testing.T) infoPath {
+func extensionless(t *testing.T) index.InfoPath {
 	root := t.TempDir()
 	path := root + "/" + "afile"
 	f, err := os.Create(path)
@@ -45,10 +47,10 @@ func extensionless(t *testing.T) infoPath {
 		t.Fatal(err)
 	}
 
-	return infoPath{path, info}
+	return index.InfoPath{path, info}
 }
 
-func markdownExtension(t *testing.T) infoPath {
+func markdownExtension(t *testing.T) index.InfoPath {
 	root := t.TempDir()
 	path := root + "/" + "a.md"
 	f, err := os.Create(path)
@@ -62,23 +64,23 @@ func markdownExtension(t *testing.T) infoPath {
 		t.Fatal(err)
 	}
 
-	return infoPath{path, info}
+	return index.InfoPath{path, info}
 }
 
-func parentDirectory(t *testing.T) infoPath {
+func parentDirectory(t *testing.T) index.InfoPath {
 	root := t.TempDir()
 	dir := root + "/parent"
 	path := dir + "/a"
 
-	return infoPath{path: path}
+	return index.InfoPath{Path: path}
 }
 
-func grandparentDirectory(t *testing.T) infoPath {
+func grandparentDirectory(t *testing.T) index.InfoPath {
 	root := t.TempDir()
 	dir := root + "/grandparent/parent"
 	path := dir + "/a"
 
-	return infoPath{path: path}
+	return index.InfoPath{Path: path}
 }
 
 func TestYamlHeaderFilter(t *testing.T) {
@@ -94,7 +96,7 @@ func TestYamlHeaderFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := yamlHeaderFilterFunc(infoPath{}, tt.r)
+			got := index.YamlHeaderPos(tt.r) > 0
 			if got != tt.want {
 				t.Errorf("YamlHeaderFilter() = %v, want %v", got, tt.want)
 			}
@@ -105,7 +107,7 @@ func TestYamlHeaderFilter(t *testing.T) {
 func TestExtensionFilter(t *testing.T) {
 	tests := []struct {
 		name    string
-		infoGen func(*testing.T) infoPath
+		infoGen func(*testing.T) index.InfoPath
 		ext     string
 		want    bool
 	}{
@@ -116,7 +118,7 @@ func TestExtensionFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			docFilter := NewExtensionFilter(tt.ext)
+			docFilter := index.NewExtensionFilter(tt.ext)
 			ip := tt.infoGen(t)
 			got := docFilter.Filter(ip, nil)
 
@@ -130,7 +132,7 @@ func TestExtensionFilter(t *testing.T) {
 func TestExcludeParentFilter(t *testing.T) {
 	tests := []struct {
 		name    string
-		infoGen func(*testing.T) infoPath
+		infoGen func(*testing.T) index.InfoPath
 		parent  string
 		want    bool
 	}{
@@ -152,7 +154,7 @@ func TestExcludeParentFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			docFilter := NewExcludeParentFilter(tt.parent)
+			docFilter := index.NewExcludeParentFilter(tt.parent)
 			ip := tt.infoGen(t)
 			got := docFilter.Filter(ip, nil)
 

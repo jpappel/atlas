@@ -102,7 +102,7 @@ func (o JsonOutput) Output(docs []*index.Document) (string, error) {
 	return string(b), nil
 }
 
-func parseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
+func ParseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
 	toks := make([]OutputToken, 0, 16)
 	curTok := make([]rune, 0, 16)
 	strToks := make([]string, 0, 8)
@@ -157,7 +157,7 @@ func parseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
 }
 
 func NewCustomOutput(formatStr string, datetimeFormat string) (CustomOutput, error) {
-	outToks, strToks, err := parseOutputFormat(formatStr)
+	outToks, strToks, err := ParseOutputFormat(formatStr)
 	if err != nil {
 		return CustomOutput{}, err
 	}

@@ -36,9 +36,9 @@ type ParseOpts struct {
 	IgnoreMetaError bool
 }
 
-type infoPath struct {
-	path string
-	info os.FileInfo
+type InfoPath struct {
+	Path string
+	Info os.FileInfo
 }
 
 type Index struct {
@@ -191,12 +191,12 @@ func (doc Document) Equal(other Document) bool {
 	return true
 }
 
-func visit(file infoPath, visitQueue chan<- infoPath, filterQueue chan<- infoPath, wg *sync.WaitGroup) {
+func visit(file InfoPath, visitQueue chan<- InfoPath, filterQueue chan<- InfoPath, wg *sync.WaitGroup) {
 	// TODO: check if symlink, and handle appropriately
 	// TODO: extract error out of function
 
-	if file.info.IsDir() {
-		entries, err := os.ReadDir(file.path)
+	if file.Info.IsDir() {
+		entries, err := os.ReadDir(file.Path)
 		if err != nil {
 			panic(err)
 		}
@@ -209,17 +209,17 @@ func visit(file infoPath, visitQueue chan<- infoPath, filterQueue chan<- infoPat
 			}
 			// PERF: prevents deadlock but introduces an additional goroutine overhead per file
 			go func(path string) {
-				visitQueue <- infoPath{path: path, info: entryInfo}
-			}(file.path + "/" + entry.Name())
+				visitQueue <- InfoPath{Path: path, Info: entryInfo}
+			}(file.Path + "/" + entry.Name())
 		}
-	} else if file.info.Mode().IsRegular() {
+	} else if file.Info.Mode().IsRegular() {
 		filterQueue <- file
 	}
 
 	wg.Done()
 }
 
-func workerTraverse(wg *sync.WaitGroup, visitQueue chan infoPath, filterQueue chan<- infoPath) {
+func workerTraverse(wg *sync.WaitGroup, visitQueue chan InfoPath, filterQueue chan<- InfoPath) {
 	for work := range visitQueue {
 		visit(work, visitQueue, filterQueue, wg)
 	}
@@ -236,8 +236,8 @@ func (idx Index) Traverse(numWorkers uint) []string {
 		panic(err)
 	}
 
-	jobs := make(chan infoPath, numWorkers)
-	filterQueue := make(chan infoPath, numWorkers)
+	jobs := make(chan InfoPath, numWorkers)
+	filterQueue := make(chan InfoPath, numWorkers)
 
 	activeJobs := &sync.WaitGroup{}
 
@@ -248,7 +248,7 @@ func (idx Index) Traverse(numWorkers uint) []string {
 
 	// init send
 	activeJobs.Add(1)
-	jobs <- infoPath{path: idx.Root, info: rootInfo}
+	jobs <- InfoPath{Path: idx.Root, Info: rootInfo}
 
 	// close jobs queue
 	go func() {
@@ -259,7 +259,7 @@ func (idx Index) Traverse(numWorkers uint) []string {
 
 	// gather
 	for doc := range filterQueue {
-		docs = append(docs, doc.path)
+		docs = append(docs, doc.Path)
 	}
 
 	return docs
@@ -278,7 +278,7 @@ func (idx Index) FilterOne(path string) bool {
 	defer f.Close()
 
 	for _, docFilter := range idx.Filters {
-		if !docFilter.Filter(infoPath{string(path), info}, f) {
+		if !docFilter.Filter(InfoPath{string(path), info}, f) {
 			return false
 		}
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
@@ -340,7 +340,7 @@ func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 	}
 	doc.FileTime = info.ModTime()
 
-	pos := yamlHeaderPos(f)
+	pos := YamlHeaderPos(f)
 	f.Seek(0, io.SeekStart)
 	if pos < 0 {
 		return nil, fmt.Errorf("Can't find YAML header in %s", path)

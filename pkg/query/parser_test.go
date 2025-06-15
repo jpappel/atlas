@@ -1,222 +1,124 @@
 package query_test
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/jpappel/atlas/pkg/query"
 )
 
-func TestClause_Flatten(t *testing.T) {
-	tests := []struct {
-		name     string
-		root     *query.Clause
-		expected query.Clause
-	}{
-		{
-			"empty",
-			&query.Clause{},
-			query.Clause{},
-		},
-		{
-			"empty with child",
-			&query.Clause{
-				Operator: query.COP_OR,
-				Clauses: []*query.Clause{
-					{
-						Operator: query.COP_AND,
-						Statements: []query.Statement{
-							{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-						},
-					},
-				},
-			},
-			query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-				},
-			},
-		},
-		{
-			"already flat",
-			&query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-				},
-			},
-			query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-				},
-			},
-		},
-		{
-			"flatten 1 layer, multiple clauses",
-			&query.Clause{
-				Operator: query.COP_OR,
-				Statements: []query.Statement{
-					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-				},
-				Clauses: []*query.Clause{
-					{Operator: query.COP_OR, Statements: []query.Statement{{Category: query.CAT_AUTHOR, Operator: query.OP_NE, Value: query.StringValue{"pj"}}}},
-					{Operator: query.COP_OR, Statements: []query.Statement{{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"barfoo"}}}},
-				},
-			},
-			query.Clause{
-				Operator: query.COP_OR,
-				Statements: []query.Statement{
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-					{Category: query.CAT_AUTHOR, Operator: query.OP_NE, Value: query.StringValue{"pj"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"barfoo"}},
-				},
-			},
-		},
-		{
-			"flatten 2 layers",
-			&query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-				},
-				Clauses: []*query.Clause{
-					{
-						Operator: query.COP_AND,
-						Statements: []query.Statement{
-							{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-							{Category: query.CAT_AUTHOR, Operator: query.OP_NE, Value: query.StringValue{"pj"}},
-						},
-						Clauses: []*query.Clause{
-							{
-								Operator: query.COP_AND,
-								Statements: []query.Statement{
-									{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"barfoo"}},
-								},
-							},
-						},
-					},
-				},
-			},
-			query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-					{Category: query.CAT_AUTHOR, Operator: query.OP_NE, Value: query.StringValue{"pj"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"barfoo"}},
-				},
-			},
-		},
-		{
-			"flatten 1 child keep 1 child",
-			&query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-				},
-				Clauses: []*query.Clause{
-					{
-						Operator: query.COP_OR,
-						Statements: []query.Statement{
-							{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-							{Category: query.CAT_AUTHOR, Operator: query.OP_NE, Value: query.StringValue{"pj"}},
-						},
-					},
-					{
-						Operator: query.COP_AND,
-						Statements: []query.Statement{
-							{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"barfoo"}},
-						},
-					},
-				},
-			},
-			query.Clause{
-				Operator: query.COP_AND,
-				Statements: []query.Statement{
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"foobar"}},
-					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"a very interesting title"}},
-					{Category: query.CAT_TAGS, Operator: query.OP_EQ, Value: query.StringValue{"barfoo"}},
-				},
-				Clauses: []*query.Clause{
-					{
-						Operator: query.COP_OR,
-						Statements: []query.Statement{
-							{Category: query.CAT_AUTHOR, Operator: query.OP_AP, Value: query.StringValue{"jp"}},
-							{Category: query.CAT_AUTHOR, Operator: query.OP_NE, Value: query.StringValue{"pj"}},
-						},
-					},
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		o := query.Optimizer{}
-		t.Run(tt.name, func(t *testing.T) {
-			o.Flatten(tt.root)
+const (
+	CAT_UNKNOWN  = query.CAT_UNKNOWN
+	CAT_TITLE    = query.CAT_TITLE
+	CAT_AUTHOR   = query.CAT_AUTHOR
+	CAT_DATE     = query.CAT_DATE
+	CAT_FILETIME = query.CAT_FILETIME
+	CAT_TAGS     = query.CAT_TAGS
+	CAT_LINKS    = query.CAT_LINKS
+	CAT_META     = query.CAT_META
 
-			slices.SortFunc(tt.root.Statements, query.StatementCmp)
-			slices.SortFunc(tt.expected.Statements, query.StatementCmp)
-
-			stmtsEq := slices.EqualFunc(tt.root.Statements, tt.expected.Statements,
-				func(a, b query.Statement) bool {
-					return a.Category == b.Category && a.Operator == b.Operator && a.Negated == b.Negated && a.Value.Compare(b.Value) == 0
-				},
-			)
-
-			if !stmtsEq {
-				t.Error("Statments not equal")
-				if gL, wL := len(tt.root.Statements), len(tt.expected.Statements); gL != wL {
-					t.Logf("Different number of statements: got %d want %d\n", gL, wL)
-				}
-			}
-
-			gotL, wantL := len(tt.root.Clauses), len(tt.expected.Clauses)
-
-			if gotL != wantL {
-				t.Errorf("Incorrect number of children clauses: got %d want %d\n", gotL, wantL)
-			}
-		})
-	}
-}
+	OP_UNKNOWN = query.OP_UNKNOWN
+	OP_EQ      = query.OP_EQ
+	OP_AP      = query.OP_AP
+	OP_NE      = query.OP_NE
+	OP_LT      = query.OP_LT
+	OP_LE      = query.OP_LE
+	OP_GE      = query.OP_GE
+	OP_GT      = query.OP_GT
+	OP_PIPE    = query.OP_PIPE
+	OP_ARG     = query.OP_ARG
+)
 
 func TestParse(t *testing.T) {
 	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for target function.
+		name    string
 		tokens  []query.Token
 		want    *query.Clause
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
+		wantErr error
+	}{{
+		"empty clause",
+		[]query.Token{
+			{Type: TOK_CLAUSE_START}, {Type: TOK_CLAUSE_AND}, {Type: TOK_CLAUSE_END},
+		},
+		&query.Clause{Operator: query.COP_AND},
+		nil,
+	}, {
+		"simple clause",
+		[]query.Token{
+			{Type: TOK_CLAUSE_START}, {Type: TOK_CLAUSE_AND},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "ken thompson"},
+			{Type: TOK_CLAUSE_END},
+		},
+		&query.Clause{
+			Operator: query.COP_AND,
+			Statements: []query.Statement{
+				{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"ken thompson"}},
+			},
+		},
+		nil,
+	}, {
+		"nested clause",
+		[]query.Token{
+			{Type: TOK_CLAUSE_START}, {Type: TOK_CLAUSE_AND},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "Alonzo Church"},
+			{Type: TOK_CLAUSE_START}, {Type: TOK_CLAUSE_OR},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_EQ, "="}, {TOK_VAL_STR, "Alan Turing"},
+			{Type: TOK_CLAUSE_END},
+			{Type: TOK_CLAUSE_END},
+		},
+		&query.Clause{
+			Operator: query.COP_AND,
+			Statements: []query.Statement{
+				{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"Alonzo Church"}},
+			},
+			Clauses: []*query.Clause{
+				{
+					Operator: query.COP_OR,
+					Statements: []query.Statement{
+						{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alan Turing"}},
+					},
+				},
+			},
+		},
+		nil,
+	}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotErr := query.Parse(tt.tokens)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("Parse() failed: %v", gotErr)
-				}
+			gotC, gotErr := query.Parse(tt.tokens)
+			if !errors.Is(gotErr, tt.wantErr) {
+				t.Fatalf("Different parse error than expected: got %v, want %v", gotErr, tt.wantErr)
+			} else if gotErr != nil {
 				return
 			}
-			if tt.wantErr {
-				t.Fatal("Parse() succeeded unexpectedly")
+
+			got := slices.Collect(gotC.DFS())
+			want := slices.Collect(tt.want.DFS())
+
+			gotL, wantL := len(got), len(want)
+			if gotL != wantL {
+				t.Errorf("Different number of clauses than expected: got %d, want %d", gotL, wantL)
 			}
-			// TODO: update the condition below to compare got with tt.want.
-			if true {
-				t.Errorf("Parse() = %v, want %v", got, tt.want)
+
+			for i := range min(gotL, wantL) {
+				gotC, wantC := got[i], want[i]
+
+				if gotC.Operator != wantC.Operator {
+					t.Error("Different clause operator than expected")
+				} else if !slices.EqualFunc(gotC.Statements, wantC.Statements,
+					func(s1, s2 query.Statement) bool {
+						return s1.Negated == s2.Negated && s1.Category == s2.Category && s1.Operator == s2.Operator && s1.Value.Compare(s2.Value) == 0
+					}) {
+					t.Error("Different statements than expected")
+				} else if len(gotC.Clauses) != len(wantC.Clauses) {
+					t.Error("Different number of child clauses than expected")
+				}
+
+				if t.Failed() {
+					t.Log("Got\n", gotC)
+					t.Log("Want\n", wantC)
+					break
+				}
 			}
 		})
 	}
