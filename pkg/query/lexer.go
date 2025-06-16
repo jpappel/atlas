@@ -339,5 +339,7 @@ func init() {
 	clausePattern := clauseStart + `\s*` + clauseOpPattern + `\s*(?:` + statementPattern + `|` + unknownPattern + `)\s*` + clauseEnd + `\s*`
 	LexRegexPattern = clausePattern
 
+	// FIXME: fails to match start of clauses with no values
+	//        ex: (and (or ... )) fails
 	LexRegex = regexp.MustCompile(LexRegexPattern)
 }

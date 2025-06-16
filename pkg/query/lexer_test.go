@@ -94,6 +94,17 @@ func TestLex(t *testing.T) {
 			{Type: TOK_CLAUSE_END},
 			{Type: TOK_CLAUSE_END},
 		}},
+		{"consecutive clause starts", "a:a (or (and a:b a:c) a:d)", []Token{
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "a"},
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_OR, "or"},
+			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "b"},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "c"},
+			{Type: TOK_CLAUSE_END},
+			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "d"},
+			{Type: TOK_CLAUSE_END},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
