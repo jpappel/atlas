@@ -1,6 +1,10 @@
 package util
 
-import "time"
+import (
+	"iter"
+	"slices"
+	"time"
+)
 
 func ParseDateTime(s string) (time.Time, error) {
 	dateFormats := []string{
@@ -32,4 +36,42 @@ func ParseDateTime(s string) (time.Time, error) {
 	}
 
 	return time.Time{}, err
+}
+
+// Create a copy of a slice with all values that satisfy cond
+func Fitler[E any](s []E, cond func(e E) bool) []E {
+	filtered := make([]E, 0, len(s))
+	for _, e := range s {
+		if cond(e) {
+			filtered = append(filtered, e)
+		}
+	}
+
+	return filtered
+}
+
+// Create an iterator of index and element for all values in a slice which satisfy cond.
+func FilterIter[E any](s []E, cond func(e E) bool) iter.Seq2[int, E] {
+	return func(yield func(int, E) bool) {
+		for i, e := range s {
+			if cond(e) {
+				if !yield(i, e) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// FilterIter but backwards
+func BackwardsFilterIter[E any](s []E, cond func(e E) bool) iter.Seq2[int, E] {
+	return func(yield func(int, E) bool) {
+		for i := len(s) - 1; i >= 0; i-- {
+			if cond(s[i]) {
+				if !yield(i, s[i]) {
+					return
+				}
+			}
+		}
+	}
 }

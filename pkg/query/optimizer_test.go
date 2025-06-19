@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"runtime"
 	"slices"
 	"testing"
 
@@ -163,9 +164,10 @@ func TestClause_Flatten(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		o := query.Optimizer{}
+		workers := uint(runtime.NumCPU())
 		t.Run(tt.name, func(t *testing.T) {
-			o.Flatten(tt.root)
+			o := query.NewOptimizer(tt.root, workers)
+			o.Flatten()
 
 			slices.SortFunc(tt.root.Statements, query.StatementCmp)
 			slices.SortFunc(tt.expected.Statements, query.StatementCmp)
@@ -256,9 +258,10 @@ func TestOptimizer_Compact(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		o := query.Optimizer{}
+		workers := uint(runtime.NumCPU())
 		t.Run(tt.name, func(t *testing.T) {
-			o.Compact(tt.c)
+			o := query.NewOptimizer(tt.c, workers)
+			o.Compact()
 			got := slices.Collect(tt.c.DFS())
 			want := slices.Collect(tt.want.DFS())
 

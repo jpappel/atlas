@@ -28,8 +28,8 @@ type opType int
 const (
 	OP_UNKNOWN opType = iota
 	OP_EQ             // equal
-	OP_AP             // approximate/fuzzy
 	OP_NE             // not equal
+	OP_AP             // approximate/fuzzy
 	OP_LT             // less than
 	OP_LE             // less than or equal
 	OP_GE             // greater than or equal
@@ -122,6 +122,15 @@ func (v DatetimeValue) Compare(other Valuer) int {
 var _ Valuer = StringValue{}
 var _ Valuer = DatetimeValue{}
 
+// Return if OP_EQ behaves like set membership
+func (t catType) IsSet() bool {
+	return t == CAT_TAGS || t == CAT_AUTHOR || t == CAT_LINKS
+}
+
+func (t catType) IsOrdered() bool {
+	return t == CAT_DATE || t == CAT_FILETIME
+}
+
 func (t catType) String() string {
 	switch t {
 	case CAT_TITLE:
@@ -141,6 +150,14 @@ func (t catType) String() string {
 	default:
 		return "Invalid"
 	}
+}
+
+func (t opType) IsFuzzy() bool {
+	return t == OP_AP || t.IsOrder()
+}
+
+func (t opType) IsOrder() bool {
+	return t == OP_LT || t == OP_LE || t == OP_GT || t == OP_GE
 }
 
 func (t opType) String() string {

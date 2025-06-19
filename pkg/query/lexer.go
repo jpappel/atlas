@@ -340,6 +340,6 @@ func init() {
 	LexRegexPattern = clausePattern
 
 	// FIXME: fails to match start of clauses with no values
-	//        ex: (and (or ... )) fails
+	//        example: (and (or ... )) fails
 	LexRegex = regexp.MustCompile(LexRegexPattern)
 }

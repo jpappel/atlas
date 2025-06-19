@@ -19,6 +19,7 @@ import (
 type Interpreter struct {
 	State   State
 	Scanner *bufio.Scanner
+	Workers uint
 }
 
 type ITokType int
@@ -54,10 +55,11 @@ type IToken struct {
 	Text string
 }
 
-func NewInterpreter(initialState State, inputSource io.Reader) *Interpreter {
+func NewInterpreter(initialState State, inputSource io.Reader, workers uint) *Interpreter {
 	return &Interpreter{
 		initialState,
 		bufio.NewScanner(inputSource),
+		workers,
 	}
 }
 
@@ -184,12 +186,24 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 				return true, errors.New("Type corruption during flatten, expected *query.Clause")
 			}
 
-			o := query.Optimizer{}
+			o := query.NewOptimizer(clause, interpreter.Workers)
 			switch t.Text {
+			case "simplify":
+				o.Simplify()
+			case "tighten":
+				o.Tighten()
 			case "flatten":
-				o.Flatten(clause)
+				o.Flatten()
+			case "sortStatements":
+				o.SortStatements()
+			case "tidy":
+				o.Tidy()
+			case "contradictions":
+				o.Contradictions()
 			case "compact":
-				o.Compact(clause)
+				o.Compact()
+			case "strictEq":
+				o.StrictEquality()
 			default:
 				return false, fmt.Errorf("Unrecognized optimization: %s", t.Text)
 			}
@@ -292,7 +306,7 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_TOKENIZE})
 		} else if trimmedWord == "parse" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
-		} else if l := len("optimize_"); len(trimmedWord) > l && trimmedWord[:l] == "optimize_" {
+		} else if l := len("opt_"); len(trimmedWord) > l && trimmedWord[:l] == "opt_" {
 			tokens = append(tokens, IToken{ITOK_CMD_OPTIMIZE, trimmedWord[l:]})
 		} else if prevType == ITOK_CMD_LET {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
@@ -357,11 +371,11 @@ func (interpreter Interpreter) Run() error {
 	}(lineCh, exitCh)
 
 	for {
-		fmt.Print("> ")
+		fmt.Print("atlasi> ")
 
 		select {
 		case <-signalCh:
-			// TODO: log info to output
+			fmt.Println("Recieved Ctrl-C, exitting")
 			return nil
 		case err := <-exitCh:
 			return err
@@ -391,8 +405,13 @@ func printHelp() {
 	fmt.Println("tokenize (string|name)                - tokenize a string")
 	fmt.Println("        ex. tokenize `author:me")
 	fmt.Println("parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Println("optimize_<subcommand> (clause|name)   - optimize clause tree")
-	fmt.Println("         flatten                      - flatten clauses")
-	fmt.Println("         compact                      - compact equivalent statements")
+	fmt.Println("opt_<subcommand> (clause|name)   - optimize clause tree")
+	fmt.Println("    sortStatements               - sort statements")
+	fmt.Println("    flatten                      - flatten clauses")
+	fmt.Println("    compact                      - compact equivalent statements")
+	fmt.Println("    tidy                         - remove zero statements and `AND` clauses containing any")
+	fmt.Println("    contradictions               - zero contradicting statements and clauses")
+	fmt.Println("    strictEq                     - zero fuzzy/range statements when an eq is present")
+	fmt.Println("    tighten                      - zero redundant fuzzy/range statements when another mathes the same values")
 	fmt.Println("\nBare commands which return a value assign to an implicit variable _")
 }
