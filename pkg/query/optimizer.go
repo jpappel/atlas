@@ -1,7 +1,9 @@
 package query
 
 import (
+	"fmt"
 	"iter"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -286,9 +288,10 @@ func (o Optimizer) StrictEquality() {
 				clear(stricts)
 				for i, s := range stmts {
 					val := strings.ToLower(s.Value.(StringValue).S)
-					if s.Operator == OP_EQ {
+					switch s.Operator {
+					case OP_EQ:
 						stricts = append(stricts, val)
-					} else if s.Operator == OP_AP {
+					case OP_AP:
 						if slices.ContainsFunc(stricts, func(strictStr string) bool {
 							return strings.Contains(strictStr, val) || strings.Contains(val, strictStr)
 						}) {
@@ -420,6 +423,7 @@ func (o *Optimizer) Tighten() {
 						}
 					}
 					if minIdx != -1 {
+						o.isSorted = false
 						start, stop := minIdx, maxIdx
 						if minS := stmts[minIdx]; minS.Operator == OP_GE || minS.Operator == OP_GT {
 							start++
@@ -440,8 +444,11 @@ func (o *Optimizer) Tighten() {
 						for j, s2 := range util.FilterIter(stmts[i+1:], func(s Statement) bool { return s.Operator == OP_AP }) {
 							val2 := strings.ToLower(s2.Value.(StringValue).S)
 							if strings.Contains(val2, val1) {
-								removals[j] = true
+								fmt.Fprintf(os.Stderr, "%s > %s\nRemoving %s\n", val2, val1, val2)
+								// NOTE: slicing stmts offsets the all indices by 1, hence the correction
+								removals[j+1] = true
 							} else if strings.Contains(val1, val2) {
+								fmt.Fprintf(os.Stderr, "%s > %s\nRemoving %s\n", val1, val2, val1)
 								removals[i] = true
 							}
 						}

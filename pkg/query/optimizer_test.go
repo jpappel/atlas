@@ -4,9 +4,41 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/query"
 )
+
+var WORKERS = uint(runtime.NumCPU())
+
+func clauseEqTest(t *testing.T, gotClause *query.Clause, wantClause *query.Clause) {
+	t.Helper()
+	o1 := query.NewOptimizer(gotClause, WORKERS)
+	o1.SortStatements()
+	o2 := query.NewOptimizer(wantClause, WORKERS)
+	o2.SortStatements()
+
+	got := slices.Collect(gotClause.DFS())
+	want := slices.Collect(wantClause.DFS())
+	gotL, wantL := len(got), len(want)
+	if gotL != wantL {
+		// only happens if written test case incorrectly
+		t.Errorf("Different number of clauses: got %d want %d", gotL, wantL)
+	}
+	for i := range min(gotL, wantL) {
+		gotClause, wantClause := got[i], want[i]
+
+		if gOp, wOp := gotClause.Operator, wantClause.Operator; gOp != wOp {
+			t.Errorf("Different operator for clause %d: want %v, got %v", i, gOp, wOp)
+		}
+
+		if !slices.Equal(gotClause.Statements, wantClause.Statements) {
+			t.Errorf("Different statements for clause %d", i)
+			t.Log("Got", gotClause.Statements)
+			t.Log("Want", wantClause.Statements)
+		}
+	}
+}
 
 func TestClause_Flatten(t *testing.T) {
 	tests := []struct {
@@ -164,9 +196,8 @@ func TestClause_Flatten(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		workers := uint(runtime.NumCPU())
 		t.Run(tt.name, func(t *testing.T) {
-			o := query.NewOptimizer(tt.root, workers)
+			o := query.NewOptimizer(tt.root, WORKERS)
 			o.Flatten()
 
 			slices.SortFunc(tt.root.Statements, query.StatementCmp)
@@ -258,32 +289,361 @@ func TestOptimizer_Compact(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		workers := uint(runtime.NumCPU())
 		t.Run(tt.name, func(t *testing.T) {
-			o := query.NewOptimizer(tt.c, workers)
+			o := query.NewOptimizer(tt.c, WORKERS)
 			o.Compact()
-			got := slices.Collect(tt.c.DFS())
-			want := slices.Collect(tt.want.DFS())
 
-			gotL, wantL := len(got), len(want)
-			if gotL != wantL {
-				// only happens if written test case incorrectly
-				t.Errorf("Different number of clauses: got %d want %d", gotL, wantL)
-			}
+			clauseEqTest(t, tt.c, &tt.want)
+		})
+	}
+}
 
-			for i := range min(gotL, wantL) {
-				gotClause, wantClause := got[i], want[i]
+func TestOptimizer_Tidy(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *query.Clause
+		want query.Clause
+	}{
+		{
+			"already tidy",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"manufacturing"}},
+				},
+				Clauses: []*query.Clause{
+					{Operator: query.COP_OR, Statements: []query.Statement{
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Chomsky, Noam"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Noam Chomsky"}},
+					}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"manufacturing"}},
+				},
+				Clauses: []*query.Clause{
+					{Operator: query.COP_OR, Statements: []query.Statement{
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Chomsky, Noam"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Noam Chomsky"}},
+					}},
+				},
+			},
+		},
+		{
+			"top level tidy",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"manufacturing"}},
+				},
+				Clauses: []*query.Clause{
+					{Operator: query.COP_OR, Statements: []query.Statement{
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Chomsky, Noam"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Noam Chomsky"}},
+						{},
+						{Category: 2 << 16},
+					}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"manufacturing"}},
+				},
+				Clauses: []*query.Clause{
+					{Operator: query.COP_OR, Statements: []query.Statement{
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Chomsky, Noam"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Noam Chomsky"}},
+					}},
+				},
+			},
+		},
+		{
+			"nested tidy",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"industry"}},
+					{true, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Alan Dersowitz"}},
+				},
+				Clauses: []*query.Clause{
+					{Operator: query.COP_OR, Statements: []query.Statement{
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Finkelstein, Norman"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Norman Finkelstein"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Norm Finkelstein"}},
+						{},
+						{Category: CAT_META + 1},
+					}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_TITLE, Operator: query.OP_AP, Value: query.StringValue{"industry"}},
+					{true, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Alan Dersowitz"}},
+				},
+				Clauses: []*query.Clause{
+					{Operator: query.COP_OR, Statements: []query.Statement{
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Finkelstein, Norman"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Norman Finkelstein"}},
+						{false, query.CAT_AUTHOR, query.OP_EQ, query.StringValue{"Norm Finkelstein"}},
+					}},
+				},
+			},
+		},
+	}
 
-				if gOp, wOp := gotClause.Operator, wantClause.Operator; gOp != wOp {
-					t.Errorf("Different operator for clause %d: want %v, got %v", i, gOp, wOp)
-				}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := query.NewOptimizer(tt.c, WORKERS)
+			o.Tidy()
+			clauseEqTest(t, tt.c, &tt.want)
+		})
+	}
+}
 
-				if !slices.Equal(gotClause.Statements, wantClause.Statements) {
-					t.Errorf("Different statements for clause %d", i)
-					t.Log("Got", gotClause.Statements)
-					t.Log("Want", wantClause.Statements)
-				}
-			}
+func TestOptimizer_Contradictions(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *query.Clause
+		want query.Clause
+	}{
+		{
+			"two equals",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_EQ, Value: query.StringValue{"carnival"}},
+					{Category: CAT_TITLE, Operator: OP_EQ, Value: query.StringValue{"carnivale"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+			},
+		},
+		{
+			"equal and not equal",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_EQ, Value: query.StringValue{"apple"}},
+					{Negated: true, Category: CAT_TITLE, Operator: OP_EQ, Value: query.StringValue{"apple"}},
+					{Category: CAT_TITLE, Operator: OP_NE, Value: query.StringValue{"apple"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+			},
+		},
+		{
+			"set contradiction",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"topology"}},
+					{Category: CAT_TAGS, Operator: OP_NE, Value: query.StringValue{"topology"}},
+				},
+				Clauses: []*query.Clause{{
+					Operator: query.COP_OR,
+					Statements: []query.Statement{
+						{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"algebra"}},
+						{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"differential"}},
+						{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"geometric"}},
+					},
+				}},
+			},
+			query.Clause{
+				Operator:   query.COP_AND,
+				Statements: []query.Statement{},
+				Clauses: []*query.Clause{{
+					Operator: query.COP_OR,
+					Statements: []query.Statement{
+						{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"algebra"}},
+						{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"differential"}},
+						{Category: CAT_TAGS, Operator: OP_EQ, Value: query.StringValue{"geometric"}},
+					},
+				}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := query.NewOptimizer(tt.c, WORKERS)
+			o.Contradictions()
+			o.Tidy()
+
+			clauseEqTest(t, tt.c, &tt.want)
+		})
+	}
+}
+
+func TestOptimizer_StrictEquality(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *query.Clause
+		want query.Clause
+	}{
+		{
+			"non-range, non-set",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_EQ, Value: query.StringValue{"notes"}},
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"monday standup"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_EQ, Value: query.StringValue{"notes"}},
+				},
+			},
+		},
+		{
+			"set",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alonzo Church"}},
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alan Turing"}},
+					{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"turing"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alonzo Church"}},
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alan Turing"}},
+				},
+			},
+		},
+		{
+			"set, no strict eq",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alonzo Church"}},
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alan Turing"}},
+					{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"djikstra"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alonzo Church"}},
+					{Category: CAT_AUTHOR, Operator: OP_EQ, Value: query.StringValue{"Alan Turing"}},
+					{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"djikstra"}},
+				},
+			},
+		},
+		{
+			"dates",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_DATE, Operator: OP_EQ, Value: query.DatetimeValue{time.Date(1886, time.May, 1, 0, 0, 0, 0, time.UTC)}},
+					{Category: CAT_DATE, Operator: OP_GE, Value: query.DatetimeValue{time.Date(1880, time.January, 1, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_DATE, Operator: OP_EQ, Value: query.DatetimeValue{time.Date(1886, time.May, 1, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := query.NewOptimizer(tt.c, WORKERS)
+			o.StrictEquality()
+			o.Tidy()
+
+			clauseEqTest(t, tt.c, &tt.want)
+		})
+	}
+}
+
+func TestOptimizer_Tighten(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *query.Clause
+		want query.Clause
+	}{
+		{
+			"dates or",
+			&query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: query.CAT_DATE, Operator: query.OP_GT, Value: query.DatetimeValue{time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					{Category: query.CAT_DATE, Operator: query.OP_GT, Value: query.DatetimeValue{time.Date(2025, 2, 2, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: query.CAT_DATE, Operator: query.OP_GT, Value: query.DatetimeValue{time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+		},
+		{
+			"dates and",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_DATE, Operator: query.OP_GT, Value: query.DatetimeValue{time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}},
+					{Category: query.CAT_DATE, Operator: query.OP_GT, Value: query.DatetimeValue{time.Date(2025, 2, 2, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: query.CAT_DATE, Operator: query.OP_GT, Value: query.DatetimeValue{time.Date(2025, 2, 2, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+		},
+		{
+			"nonordered or",
+			&query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"Das Kapital I"}},
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"Das Kapital"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"Das Kapital"}},
+				},
+			},
+		},
+		{
+			"nonordered and",
+			&query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"Das Kapital I"}},
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"Das Kapital"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_AND,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_AP, Value: query.StringValue{"Das Kapital I"}},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := query.NewOptimizer(tt.c, WORKERS)
+			o.Tighten()
+			o.Tidy()
+
+			clauseEqTest(t, tt.c, &tt.want)
 		})
 	}
 }
