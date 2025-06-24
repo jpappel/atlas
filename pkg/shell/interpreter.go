@@ -48,6 +48,7 @@ const (
 	ITOK_CMD_OPTIMIZE
 	ITOK_CMD_TOKENIZE
 	ITOK_CMD_PARSE
+	ITOK_CMD_COMPILE
 )
 
 type IToken struct {
@@ -88,21 +89,22 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 	var variableName string
 	var carryValue Value
 	var ok bool
+out:
 	for i := len(tokens) - 1; i >= 0; i-- {
 		t := tokens[i]
 		switch t.Type {
 		case ITOK_CMD_HELP:
 			printHelp()
-			break
+			break out
 		case ITOK_CMD_CLEAR:
 			fmt.Println("\033[H\033[J")
-			break
+			break out
 		case ITOK_CMD_LET:
 			if variableName != "" {
 				interpreter.State[variableName] = carryValue
 				carryValue.Type = VAL_INVALID
 			}
-			break
+			break out
 		case ITOK_CMD_DEL:
 			if len(tokens) == 1 {
 				fmt.Println("Deleting all variables")
@@ -112,7 +114,7 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 				delete(interpreter.State, tokens[i+1].Text)
 			}
 			carryValue.Type = VAL_INVALID
-			break
+			break out
 		case ITOK_CMD_PRINT:
 			if len(tokens) == 1 {
 				fmt.Println("Variables:")
@@ -148,7 +150,7 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 			carryValue.Val = b.String()
 		case ITOK_CMD_REPATTERN:
 			fmt.Println(query.LexRegexPattern)
-			break
+			break out
 		case ITOK_CMD_TOKENIZE:
 			if carryValue.Type != VAL_STRING {
 				return false, fmt.Errorf("Unable to tokenize argument of type: %s", carryValue.Type)
@@ -178,12 +180,12 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 			carryValue.Val = clause
 		case ITOK_CMD_OPTIMIZE:
 			if carryValue.Type != VAL_CLAUSE {
-				return false, fmt.Errorf("Unable to flatten argument of type: %s", carryValue)
+				return false, fmt.Errorf("Unable to optimize argument of type: %s", carryValue)
 			}
 
 			clause, ok := carryValue.Val.(*query.Clause)
 			if !ok {
-				return true, errors.New("Type corruption during flatten, expected *query.Clause")
+				return true, errors.New("Type corruption during optimization, expected *query.Clause")
 			}
 
 			o := query.NewOptimizer(clause, interpreter.Workers)
@@ -210,6 +212,24 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 
 			carryValue.Type = VAL_CLAUSE
 			carryValue.Val = clause
+		case ITOK_CMD_COMPILE:
+			if carryValue.Type != VAL_CLAUSE {
+				return false, fmt.Errorf("Unable to compile argument of type: %s", carryValue)
+			}
+
+			clause, ok := carryValue.Val.(*query.Clause)
+			if !ok {
+				return true, errors.New("Type corruption during compilation, expected *query.Clause")
+			}
+
+			query, params, err := clause.Compile()
+			if err != nil {
+				return false, err
+			}
+
+			fmt.Printf("query:\n%s\n--------\nparams:\n%s\n", query, params)
+			carryValue.Type = VAL_INVALID
+			break out
 		case ITOK_VAR_NAME:
 			// NOTE: very brittle, only allows expansion of a single variable
 			if i == len(tokens)-1 {
@@ -259,7 +279,7 @@ func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
 				return false, fmt.Errorf("Cannot slice argument: %v", cType)
 			}
 			fmt.Println("not implemented yet ;)")
-			break
+			break out
 		}
 	}
 
@@ -308,6 +328,8 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
 		} else if l := len("opt_"); len(trimmedWord) > l && trimmedWord[:l] == "opt_" {
 			tokens = append(tokens, IToken{ITOK_CMD_OPTIMIZE, trimmedWord[l:]})
+		} else if trimmedWord == "compile" {
+			tokens = append(tokens, IToken{Type: ITOK_CMD_COMPILE})
 		} else if prevType == ITOK_CMD_LET {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_DEL {
@@ -328,9 +350,7 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			} else {
 				tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 			}
-		} else if prevType == ITOK_CMD_PARSE {
-			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_CMD_OPTIMIZE {
+		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAR_NAME && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
@@ -405,13 +425,14 @@ func printHelp() {
 	fmt.Println("tokenize (string|name)                - tokenize a string")
 	fmt.Println("        ex. tokenize `author:me")
 	fmt.Println("parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Println("opt_<subcommand> (clause|name)   - optimize clause tree")
-	fmt.Println("    sortStatements               - sort statements")
-	fmt.Println("    flatten                      - flatten clauses")
-	fmt.Println("    compact                      - compact equivalent statements")
-	fmt.Println("    tidy                         - remove zero statements and `AND` clauses containing any")
-	fmt.Println("    contradictions               - zero contradicting statements and clauses")
-	fmt.Println("    strictEq                     - zero fuzzy/range statements when an eq is present")
-	fmt.Println("    tighten                      - zero redundant fuzzy/range statements when another mathes the same values")
+	fmt.Println("opt_<subcommand> (clause|name)        - optimize clause tree")
+	fmt.Println("    sortStatements                    - sort statements")
+	fmt.Println("    flatten                           - flatten clauses")
+	fmt.Println("    compact                           - compact equivalent statements")
+	fmt.Println("    tidy                              - remove zero statements and `AND` clauses containing any")
+	fmt.Println("    contradictions                    - zero contradicting statements and clauses")
+	fmt.Println("    strictEq                          - zero fuzzy/range statements when an eq is present")
+	fmt.Println("    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
+	fmt.Println("compile (clause|name)                 - compile clause into query")
 	fmt.Println("\nBare commands which return a value assign to an implicit variable _")
 }
