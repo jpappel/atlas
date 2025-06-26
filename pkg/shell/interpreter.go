@@ -1,25 +1,30 @@
 package shell
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
+	"index/suffixarray"
 	"io"
-	"os"
-	"os/signal"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"unicode"
 
 	"github.com/jpappel/atlas/pkg/query"
+	"golang.org/x/term"
 )
 
 type Interpreter struct {
 	State   State
-	Scanner *bufio.Scanner
 	Workers uint
+	env     map[string]string
+	term    *term.Terminal
+	tab     struct {
+		inTabMode   bool
+		completions []string
+		pos         int
+		index       *suffixarray.Index
+	}
 }
 
 type ITokType int
@@ -38,6 +43,8 @@ const (
 	// commands
 	ITOK_CMD_HELP
 	ITOK_CMD_CLEAR
+	ITOK_CMD_EXIT
+	ITOK_CMD_ENV
 	ITOK_CMD_LET
 	ITOK_CMD_DEL
 	ITOK_CMD_PRINT
@@ -56,19 +63,19 @@ type IToken struct {
 	Text string
 }
 
-func NewInterpreter(initialState State, inputSource io.Reader, workers uint) *Interpreter {
+func NewInterpreter(initialState State, env map[string]string, workers uint) *Interpreter {
 	return &Interpreter{
-		initialState,
-		bufio.NewScanner(inputSource),
-		workers,
+		State:   initialState,
+		env:     env,
+		Workers: workers,
 	}
 }
 
-func (interpreter *Interpreter) Reset() {
-	interpreter.State = make(State)
+func (inter *Interpreter) Reset() {
+	inter.State = make(State)
 }
 
-func (interpreter *Interpreter) Eval(tokens []IToken) (bool, error) {
+func (inter *Interpreter) Eval(w io.Writer, tokens []IToken) (bool, error) {
 	if len(tokens) == 0 {
 		return false, nil
 	}
@@ -94,33 +101,48 @@ out:
 		t := tokens[i]
 		switch t.Type {
 		case ITOK_CMD_HELP:
-			printHelp()
+			printHelp(w)
 			break out
+		case ITOK_CMD_EXIT:
+			return true, nil
 		case ITOK_CMD_CLEAR:
-			fmt.Println("\033[H\033[J")
+			fmt.Fprint(w, "\033[H\033[J")
+			break out
+		case ITOK_CMD_ENV:
+			if t.Text == "" {
+				for k, v := range inter.env {
+					fmt.Fprintln(w, k, ":", v)
+				}
+			} else {
+				v, ok := inter.env[t.Text]
+				if !ok {
+					return false, fmt.Errorf("No env var: %s", t.Text)
+				}
+				fmt.Fprintln(w, t.Text, ":", v)
+			}
 			break out
 		case ITOK_CMD_LET:
 			if variableName != "" {
-				interpreter.State[variableName] = carryValue
+				inter.State[variableName] = carryValue
 				carryValue.Type = VAL_INVALID
 			}
 			break out
 		case ITOK_CMD_DEL:
 			if len(tokens) == 1 {
-				fmt.Println("Deleting all variables")
-				interpreter.State = make(State)
+				fmt.Fprintln(w, "Deleting all variables")
+				inter.State = make(State)
 			} else {
 				// HACK: variable name is not evaluated correctly so just look at the next token
-				delete(interpreter.State, tokens[i+1].Text)
+				delete(inter.State, tokens[i+1].Text)
 			}
 			carryValue.Type = VAL_INVALID
 			break out
 		case ITOK_CMD_PRINT:
 			if len(tokens) == 1 {
-				fmt.Println("Variables:")
-				fmt.Println(interpreter.State)
+				fmt.Fprintln(w, "Variables:")
+				fmt.Fprintln(w, inter.State)
 			} else {
-				carryValue, ok = interpreter.State[tokens[1].Text]
+				carryValue, ok = inter.State[tokens[1].Text]
 				if !ok {
 					return false, fmt.Errorf("No variable %s", tokens[1].Text)
 				}
@@ -149,7 +171,7 @@ out:
 			}
 			carryValue.Val = b.String()
 		case ITOK_CMD_REPATTERN:
-			fmt.Println(query.LexRegexPattern)
+			fmt.Fprintln(w, query.LexRegexPattern)
 			break out
 		case ITOK_CMD_TOKENIZE:
 			if carryValue.Type != VAL_STRING {
@@ -188,7 +210,7 @@ out:
 				return true, errors.New("Type corruption during optimization, expected *query.Clause")
 			}
 
-			o := query.NewOptimizer(clause, interpreter.Workers)
+			o := query.NewOptimizer(clause, inter.Workers)
 			switch t.Text {
 			case "simplify":
 				o.Simplify()
@@ -196,7 +218,7 @@ out:
 				o.Tighten()
 			case "flatten":
 				o.Flatten()
-			case "sortStatements":
+			case "sort":
 				o.SortStatements()
 			case "tidy":
 				o.Tidy()
@@ -227,13 +249,13 @@ out:
 				return false, err
 			}
 
-			fmt.Printf("query:\n%s\n--------\nparams:\n%s\n", query, params)
+			fmt.Fprintf(w, "query:\n%s\n--------\nparams:\n%s\n", query, params)
 			carryValue.Type = VAL_INVALID
 			break out
 		case ITOK_VAR_NAME:
 			// NOTE: very brittle, only allows expansion of a single variable
 			if i == len(tokens)-1 {
-				carryValue, ok = interpreter.State[t.Text]
+				carryValue, ok = inter.State[t.Text]
 				if !ok {
 					return false, fmt.Errorf("No variable: %s", t.Text)
 				}
@@ -278,20 +300,19 @@ out:
 			default:
 				return false, fmt.Errorf("Cannot slice argument: %v", cType)
 			}
-			fmt.Println("not implemented yet ;)")
-			break out
+			return false, fmt.Errorf("not implemented")
 		}
 	}
 
 	if carryValue.Type != VAL_INVALID {
-		fmt.Println(carryValue)
-		interpreter.State["_"] = carryValue
+		fmt.Fprintln(w, carryValue)
+		inter.State["_"] = carryValue
 	}
 
 	return false, nil
 }
 
-func (interpreter Interpreter) Tokenize(line string) []IToken {
+func (inter Interpreter) Tokenize(line string) []IToken {
 	var prevType ITokType
 	tokens := make([]IToken, 0, 3)
 	for word := range strings.SplitSeq(line, " ") {
@@ -306,6 +327,10 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 
 		if trimmedWord == "help" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_HELP})
+		} else if trimmedWord == "exit" {
+			tokens = append(tokens, IToken{Type: ITOK_CMD_EXIT})
+		} else if trimmedWord == "env" {
+			tokens = append(tokens, IToken{Type: ITOK_CMD_ENV})
 		} else if trimmedWord == "clear" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_CLEAR})
 		} else if trimmedWord == "let" {
@@ -326,6 +351,8 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_TOKENIZE})
 		} else if trimmedWord == "parse" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
+		} else if l := len("env_"); len(trimmedWord) > l && trimmedWord[:l] == "env_" {
+			tokens = append(tokens, IToken{ITOK_CMD_ENV, trimmedWord[l:]})
 		} else if l := len("opt_"); len(trimmedWord) > l && trimmedWord[:l] == "opt_" {
 			tokens = append(tokens, IToken{ITOK_CMD_OPTIMIZE, trimmedWord[l:]})
 		} else if trimmedWord == "compile" {
@@ -367,72 +394,31 @@ func (interpreter Interpreter) Tokenize(line string) []IToken {
 	return tokens
 }
 
-func (interpreter Interpreter) Run() error {
-	signalCh := make(chan os.Signal, 1)
-	exitCh := make(chan error, 1)
-	lineCh := make(chan string)
-	defer close(signalCh)
-	defer close(lineCh)
-	defer close(exitCh)
-
-	signal.Notify(signalCh, syscall.SIGINT)
-	go func(output chan<- string, exitCh chan<- error) {
-		for {
-			if interpreter.Scanner.Scan() {
-				output <- interpreter.Scanner.Text()
-			} else if err := interpreter.Scanner.Err(); err != nil {
-				exitCh <- err
-				return
-			} else {
-				exitCh <- io.EOF
-				return
-			}
-		}
-	}(lineCh, exitCh)
-
-	for {
-		fmt.Print("atlasi> ")
-
-		select {
-		case <-signalCh:
-			fmt.Println("Recieved Ctrl-C, exitting")
-			return nil
-		case err := <-exitCh:
-			return err
-		case line := <-lineCh:
-			tokens := interpreter.Tokenize(line)
-			fatal, err := interpreter.Eval(tokens)
-			if fatal {
-				return err
-			} else if err != nil {
-				fmt.Println(err)
-			}
-		}
-	}
-}
-
-func printHelp() {
-	fmt.Println("Shitty debug shell for atlas")
-	fmt.Println("help                                  - print this help")
-	fmt.Println("clear                                 - clear the screen")
-	fmt.Println("let name (string|tokens|clause)       - save value to a variable")
-	fmt.Println("del [name]                            - delete a variable or all variables")
-	fmt.Println("print [name]                          - print a variable or all variables")
-	fmt.Println("slice (string|tokens|name) start stop - slice a string or tokens from start to stop")
-	fmt.Println("len (string|tokens|name)              - length of a string or token slice")
-	fmt.Println("rematch (string|name)                 - match against regex for querylang spec")
-	fmt.Println("repattern                             - print regex for querylang")
-	fmt.Println("tokenize (string|name)                - tokenize a string")
-	fmt.Println("        ex. tokenize `author:me")
-	fmt.Println("parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Println("opt_<subcommand> (clause|name)        - optimize clause tree")
-	fmt.Println("    sortStatements                    - sort statements")
-	fmt.Println("    flatten                           - flatten clauses")
-	fmt.Println("    compact                           - compact equivalent statements")
-	fmt.Println("    tidy                              - remove zero statements and `AND` clauses containing any")
-	fmt.Println("    contradictions                    - zero contradicting statements and clauses")
-	fmt.Println("    strictEq                          - zero fuzzy/range statements when an eq is present")
-	fmt.Println("    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
-	fmt.Println("compile (clause|name)                 - compile clause into query")
-	fmt.Println("\nBare commands which return a value assign to an implicit variable _")
+func printHelp(w io.Writer) {
+	fmt.Fprintln(w, "Shitty debug shell for atlas")
+	fmt.Fprintln(w, "help                                  - print this help")
+	fmt.Fprintln(w, "exit                                  - exit interactive mode")
+	fmt.Fprintln(w, "env                                   - print info about environment")
+	fmt.Fprintln(w, "    env_<name>                        - print about specific variable <name>")
+	fmt.Fprintln(w, "clear                                 - clear the screen")
+	fmt.Fprintln(w, "let name (string|tokens|clause)       - save value to a variable")
+	fmt.Fprintln(w, "del [name]                            - delete a variable or all variables")
+	fmt.Fprintln(w, "print [name]                          - print a variable or all variables")
+	fmt.Fprintln(w, "slice (string|tokens|name) start stop - slice a string or tokens from start to stop")
+	fmt.Fprintln(w, "len (string|tokens|name)              - length of a string or token slice")
+	fmt.Fprintln(w, "rematch (string|name)                 - match against regex for querylang spec")
+	fmt.Fprintln(w, "repattern                             - print regex for querylang")
+	fmt.Fprintln(w, "tokenize (string|name)                - tokenize a string")
+	fmt.Fprintln(w, "        ex. tokenize `author:me")
+	fmt.Fprintln(w, "parse (tokens|name)                   - parse tokens into a clause")
+	fmt.Fprintln(w, "opt_<subcommand> (clause|name)        - optimize clause tree")
+	fmt.Fprintln(w, "    sort                              - sort statements")
+	fmt.Fprintln(w, "    flatten                           - flatten clauses")
+	fmt.Fprintln(w, "    compact                           - compact equivalent statements")
+	fmt.Fprintln(w, "    tidy                              - remove zero statements and `AND` clauses containing any")
+	fmt.Fprintln(w, "    contradictions                    - zero contradicting statements and clauses")
+	fmt.Fprintln(w, "    strictEq                          - zero fuzzy/range statements when an eq is present")
+	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
+	fmt.Fprintln(w, "compile (clause|name)                 - compile clause into query")
+	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")
 }

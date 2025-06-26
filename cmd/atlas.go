@@ -208,7 +208,14 @@ func main() {
 		}
 	case "shell":
 		state := make(shell.State)
-		interpreter := shell.NewInterpreter(state, os.Stdin, globalFlags.NumWorkers)
+		env := make(map[string]string)
+
+		env["workers"] = fmt.Sprint(globalFlags.NumWorkers)
+		env["db path"] = globalFlags.DBPath
+		env["index root"] = globalFlags.IndexRoot
+		env["version"] = "0.0.1"
+
+		interpreter := shell.NewInterpreter(state, env, globalFlags.NumWorkers)
 		if err := interpreter.Run(); err != nil && err != io.EOF {
 			slog.Error("Fatal error occured", slog.String("err", err.Error()))
 			os.Exit(1)
