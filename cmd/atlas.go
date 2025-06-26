@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/adrg/xdg"
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
@@ -49,9 +52,20 @@ func printHelp() {
 }
 
 func main() {
+	home, _ := os.UserHomeDir()
+	dataHome := xdg.DataHome
+	if dataHome == "" {
+		dataHome = strings.Join([]string{home, ".local", "share"}, string(os.PathSeparator))
+	}
+	dataHome += string(os.PathSeparator) + "atlas"
+	if err := os.Mkdir(dataHome, 0755); errors.Is(err, fs.ErrExist) {
+	} else if err != nil {
+		panic(err)
+	}
+
 	globalFlags := GlobalFlags{}
-	flag.StringVar(&globalFlags.IndexRoot, "root", "/home/goose/src/atlas/test", "root `directory` for indexing")
-	flag.StringVar(&globalFlags.DBPath, "db", "/home/goose/src/atlas/test.db", "`path` to document database")
+	flag.StringVar(&globalFlags.IndexRoot, "root", xdg.UserDirs.Documents, "root `directory` for indexing")
+	flag.StringVar(&globalFlags.DBPath, "db", dataHome+string(os.PathSeparator)+"default.db", "`path` to document database")
 	flag.StringVar(&globalFlags.LogLevel, "logLevel", "error", "set log `level` (debug, info, warn, error)")
 	flag.BoolVar(&globalFlags.LogJson, "logJson", false, "log to json")
 	flag.UintVar(&globalFlags.NumWorkers, "numWorkers", uint(runtime.NumCPU()), "number of worker threads to use (defaults to core count)")
@@ -90,13 +104,14 @@ func main() {
 		// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
 		queryFs.Func("outFormat", "output `format` for queries (default, json, custom)",
 			func(arg string) error {
-				if arg == "default" {
+				switch arg {
+				case "default":
 					queryFlags.Output = query.DefaultOutput{}
 					return nil
-				} else if arg == "json" {
+				case "json":
 					queryFlags.Output = query.JsonOutput{}
 					return nil
-				} else if arg == "custom" {
+				case "custom":
 					var err error
 					queryFlags.Output, err = query.NewCustomOutput(queryFlags.CustomFormat, dateFormat)
 					return err
@@ -219,7 +234,7 @@ func main() {
 		if err := interpreter.Run(); err != nil && err != io.EOF {
 			slog.Error("Fatal error occured", slog.String("err", err.Error()))
 			os.Exit(1)
-		} 
+		}
 	}
 
 }
