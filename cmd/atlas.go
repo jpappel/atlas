@@ -219,9 +219,7 @@ func main() {
 		if err := interpreter.Run(); err != nil && err != io.EOF {
 			slog.Error("Fatal error occured", slog.String("err", err.Error()))
 			os.Exit(1)
-		} else {
-			fmt.Println("\nLeaving atlasi.")
-		}
+		} 
 	}
 
 }
