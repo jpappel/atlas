@@ -2,7 +2,6 @@ package query
 
 import (
 	"fmt"
-	"iter"
 	"os"
 	"slices"
 	"strings"
@@ -87,29 +86,6 @@ func (o *Optimizer) serial(optimize func(*Clause)) {
 			return child == nil
 		})
 		stack = append(stack, node.Clauses...)
-	}
-}
-
-// Partition statements by their category without copying (slices clause.Statements)
-func (o *Optimizer) partitionStatemements(clause *Clause) iter.Seq2[catType, Statements] {
-	return func(yield func(catType, Statements) bool) {
-		var category, lastCategory catType
-		var lastCategoryStart int
-		for i, stmt := range clause.Statements {
-			category = stmt.Category
-			if category != lastCategory {
-				if !yield(lastCategory, clause.Statements[lastCategoryStart:i]) {
-					return
-				}
-				lastCategoryStart = i
-			}
-			lastCategory = category
-		}
-
-		// handle leftover
-		if !yield(category, clause.Statements[lastCategoryStart:]) {
-			return
-		}
 	}
 }
 
@@ -231,7 +207,7 @@ func (o *Optimizer) Contradictions() {
 	o.parallel(func(c *Clause) {
 		removals := make(map[int]bool, 8)
 		var isContradiction func(s1, s2 Statement) bool
-		for category, stmts := range o.partitionStatemements(c) {
+		for category, stmts := range c.Statements.CategoryPartition() {
 			if c.Operator == COP_AND && !category.IsSet() {
 				isContradiction = func(s1, s2 Statement) bool {
 					return (s1.Operator == OP_EQ && s1.Operator == s2.Operator) || inverseEq(s1, s2)
@@ -283,7 +259,7 @@ func (o Optimizer) StrictEquality() {
 		}
 
 		stricts := make([]string, 0)
-		for category, stmts := range o.partitionStatemements(c) {
+		for category, stmts := range c.Statements.CategoryPartition() {
 			if category.IsSet() {
 				clear(stricts)
 				for i, s := range stmts {
@@ -328,7 +304,7 @@ func (o *Optimizer) Tighten() {
 	}
 
 	o.parallel(func(c *Clause) {
-		for category, stmts := range o.partitionStatemements(c) {
+		for category, stmts := range c.Statements.CategoryPartition() {
 			if len(stmts) < 2 {
 				continue
 			}

@@ -211,8 +211,8 @@ func main() {
 		env := make(map[string]string)
 
 		env["workers"] = fmt.Sprint(globalFlags.NumWorkers)
-		env["db path"] = globalFlags.DBPath
-		env["index root"] = globalFlags.IndexRoot
+		env["db_path"] = globalFlags.DBPath
+		env["index_root"] = globalFlags.IndexRoot
 		env["version"] = "0.0.1"
 
 		interpreter := shell.NewInterpreter(state, env, globalFlags.NumWorkers)

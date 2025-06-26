@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -254,6 +255,61 @@ func (s *Statement) Simplify() {
 	}
 }
 
+// Partition statements by their category without copying
+//
+// Requires sorted slice!
+func (s Statements) CategoryPartition() iter.Seq2[catType, Statements] {
+	if !slices.IsSortedFunc(s, StatementCmp) {
+		slices.SortFunc(s, StatementCmp)
+	}
+
+	return func(yield func(catType, Statements) bool) {
+		var category, lastCategory catType
+		var lastCategoryStart int
+		for i, stmt := range s {
+			category = stmt.Category
+			if category != lastCategory {
+				if !yield(lastCategory, s[lastCategoryStart:i]) {
+					return
+				}
+				lastCategoryStart = i
+			}
+			lastCategory = category
+		}
+
+		// handle leftover
+		if !yield(category, s[lastCategoryStart:]) {
+			return
+		}
+	}
+}
+
+// Partition statemetns by their operator without copying, similar to
+// CategoryPartition.
+func (s Statements) OperatorPartition() iter.Seq2[opType, Statements] {
+	if !slices.IsSortedFunc(s, StatementCmp) {
+		slices.SortFunc(s, StatementCmp)
+	}
+
+	return func(yield func(opType, Statements) bool) {
+		var op, lastOp opType
+		var lastOpStart int
+		for i, stmt := range s {
+			op = stmt.Operator
+			if op != lastOp {
+				if !yield(lastOp, s[lastOpStart:i]) {
+					return
+				}
+			}
+			lastOp = op
+		}
+
+		if !yield(op, s[lastOpStart:]) {
+			return
+		}
+	}
+}
+
 func (c Clause) String() string {
 	b := &strings.Builder{}
 	c.buildString(b, 0)
@@ -263,18 +319,19 @@ func (c Clause) String() string {
 func (c Clause) buildString(b *strings.Builder, level int) {
 	writeIndent(b, level)
 	b.WriteByte('(')
-	if c.Operator == COP_AND {
+	switch c.Operator {
+	case COP_AND:
 		b.WriteString("and")
-	} else if c.Operator == COP_OR {
+	case COP_OR:
 		b.WriteString("or")
-	} else {
+	default:
 		b.WriteString("unknown_op")
 	}
 	b.WriteByte('\n')
 
 	for _, stmt := range c.Statements {
 		writeIndent(b, level+1)
-		b.WriteString(fmt.Sprintf("%+v", stmt))
+		fmt.Fprintf(b, "%+v", stmt)
 		b.WriteByte('\n')
 	}
 
