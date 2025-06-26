@@ -400,6 +400,5 @@ func (p PutMany) authors(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Println("encountered no errors!")
 	return nil
 }

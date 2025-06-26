@@ -14,6 +14,8 @@ import (
 	"golang.org/x/term"
 )
 
+const COMMENT_STR = "#"
+
 type Interpreter struct {
 	State   State
 	Workers uint
@@ -315,6 +317,11 @@ out:
 func (inter Interpreter) Tokenize(line string) []IToken {
 	var prevType ITokType
 	tokens := make([]IToken, 0, 3)
+
+	if line[:len(COMMENT_STR)] == COMMENT_STR {
+		return tokens
+	}
+
 	for word := range strings.SplitSeq(line, " ") {
 		trimmedWord := strings.TrimSpace(word)
 		if trimmedWord == "" {
