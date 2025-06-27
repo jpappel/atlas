@@ -158,7 +158,6 @@ func Lex(query string) []Token {
 	for _, match := range matches {
 		if match[CLAUSE_START] != "" {
 			tokens = append(tokens, Token{Type: TOK_CLAUSE_START})
-			// TODO: set maximum nest level
 			clauseLevel += 1
 		}
 		if match[CLAUSE_OPERATOR] != "" {
@@ -189,7 +188,6 @@ func Lex(query string) []Token {
 
 		if match[CLAUSE_END] != "" {
 			tokens = append(tokens, Token{Type: TOK_CLAUSE_END})
-			// TODO: raise err if clauseLevel is 0
 			clauseLevel -= 1
 		}
 	}

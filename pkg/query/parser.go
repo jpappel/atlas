@@ -75,6 +75,7 @@ type Valuer interface {
 	// TODO: define
 	Type() valuerType
 	Compare(Valuer) int
+	buildCompile(*strings.Builder) (string, bool)
 }
 
 var _ Valuer = StringValue{}
@@ -103,6 +104,11 @@ func (v StringValue) Compare(other Valuer) int {
 	}
 }
 
+func (v StringValue) buildCompile(b *strings.Builder) (string, bool) {
+	b.WriteByte('?')
+	return v.S, true
+}
+
 type DatetimeValue struct {
 	D time.Time
 }
@@ -120,6 +126,11 @@ func (v DatetimeValue) Compare(other Valuer) int {
 	return v.D.Compare(o.D)
 }
 
+func (v DatetimeValue) buildCompile(b *strings.Builder) (string, bool) {
+	fmt.Fprint(b, v.D.Unix(), " ")
+	return "", false
+}
+
 var _ Valuer = StringValue{}
 var _ Valuer = DatetimeValue{}
 
@@ -135,19 +146,19 @@ func (t catType) IsOrdered() bool {
 func (t catType) String() string {
 	switch t {
 	case CAT_TITLE:
-		return "Title"
+		return "title"
 	case CAT_AUTHOR:
-		return "Author"
+		return "author"
 	case CAT_DATE:
-		return "Date"
+		return "date"
 	case CAT_FILETIME:
-		return "Filetime"
+		return "fileTime"
 	case CAT_TAGS:
-		return "Tags"
+		return "tag"
 	case CAT_LINKS:
-		return "Links"
+		return "links"
 	case CAT_META:
-		return "Metadata"
+		return "meta"
 	default:
 		return "Invalid"
 	}
@@ -284,7 +295,7 @@ func (s Statements) CategoryPartition() iter.Seq2[catType, Statements] {
 	}
 }
 
-// Partition statemetns by their operator without copying, similar to
+// Partition statements by their operator without copying, similar to
 // CategoryPartition.
 func (s Statements) OperatorPartition() iter.Seq2[opType, Statements] {
 	if !slices.IsSortedFunc(s, StatementCmp) {
@@ -300,6 +311,7 @@ func (s Statements) OperatorPartition() iter.Seq2[opType, Statements] {
 				if !yield(lastOp, s[lastOpStart:i]) {
 					return
 				}
+				lastOpStart = i
 			}
 			lastOp = op
 		}
@@ -388,7 +400,7 @@ func (root *Clause) BFS() iter.Seq[*Clause] {
 		write := 1
 		size := 1
 
-		// FIXME: can potentially discard values if queue is too small
+		// WARN: can potentially discard values if queue is too small
 		for size != 0 {
 			node := queue[read]
 

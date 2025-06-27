@@ -37,6 +37,32 @@ func ParseDateTime(s string) (time.Time, error) {
 	return time.Time{}, err
 }
 
+// Estimate an interval around a time which is still "meaningful"
+//
+// Ex: 2025-06-14 -> [2025-06-10, 2025-06-18]
+// Ex: 2025-06-14T12:00 -> [2025-06-14T8:00, 2025-06-14T16:00]
+func FuzzDatetime(t time.Time) (start time.Time, stop time.Time) {
+	hour, minute, sec := t.Clock()
+	_, month, day := t.Date()
+
+	var d time.Duration
+	if sec != 0 {
+		d = 5 * time.Minute
+	} else if minute != 0 {
+		d = 30 * time.Minute
+	} else if hour != 0 {
+		d = 4 * time.Hour
+	} else if day != 1 {
+		d = 84 * time.Hour // +- 3.5 days
+	} else if month != time.January {
+		d = 336 * time.Hour // +- .5 months
+	} else {
+		d = 4380 * time.Hour // search +- 6months
+	}
+
+	return t.Add(-d), t.Add(d)
+}
+
 // Create a copy of a slice with all values that satisfy cond
 func Fitler[E any](s []E, cond func(e E) bool) []E {
 	filtered := make([]E, 0, len(s))
