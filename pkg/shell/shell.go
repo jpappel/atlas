@@ -9,20 +9,6 @@ import (
 	"golang.org/x/term"
 )
 
-var commands = []string{
-	"help",
-	"clear",
-	"let",
-	"del",
-	"slice",
-	"rematch",
-	"repattern",
-	"tokenize",
-	"opt_simplify", "opt_tighten", "opt_flatten", "opt_sort", "opt_tidy", "opt_contradictions", "opt_compact", "opt_strictEq",
-	"parse",
-	"compile",
-}
-
 func (inter *Interpreter) runNonInteractive() error {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {

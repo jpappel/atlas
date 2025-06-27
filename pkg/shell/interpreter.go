@@ -3,7 +3,6 @@ package shell
 import (
 	"errors"
 	"fmt"
-	"index/suffixarray"
 	"io"
 	"slices"
 	"strconv"
@@ -11,22 +10,24 @@ import (
 	"unicode"
 
 	"github.com/jpappel/atlas/pkg/query"
+	"github.com/jpappel/atlas/pkg/util"
 	"golang.org/x/term"
 )
 
 const COMMENT_STR = "#"
 
+type keywords struct {
+	commands      []string
+	variables     []string
+	optimizations []string
+}
+
 type Interpreter struct {
-	State   State
-	Workers uint
-	env     map[string]string
-	term    *term.Terminal
-	tab     struct {
-		inTabMode   bool
-		completions []string
-		pos         int
-		index       *suffixarray.Index
-	}
+	State    State
+	Workers  uint
+	env      map[string]string
+	term     *term.Terminal
+	keywords keywords
 }
 
 type ITokType int
@@ -65,10 +66,38 @@ type IToken struct {
 	Text string
 }
 
+var optimizations = []string{
+	"simplify",
+	"tighten",
+	"flatten",
+	"sort",
+	"tidy",
+	"contradictions",
+	"compact",
+	"strictEq",
+}
+
+var commands = []string{
+	"help",
+	"clear",
+	"let",
+	"del",
+	"slice",
+	"rematch",
+	"repattern",
+	"tokenize",
+	"parse",
+	"compile",
+}
+
 func NewInterpreter(initialState State, env map[string]string, workers uint) *Interpreter {
 	return &Interpreter{
-		State:   initialState,
-		env:     env,
+		State: initialState,
+		env:   env,
+		keywords: keywords{
+			commands:      commands,
+			optimizations: optimizations,
+		},
 		Workers: workers,
 	}
 }
@@ -85,11 +114,21 @@ func (inter *Interpreter) Eval(w io.Writer, tokens []IToken) (bool, error) {
 	if slices.ContainsFunc(tokens, func(token IToken) bool {
 		return token.Type == ITOK_INVALID
 	}) {
-		b := strings.Builder{}
-		b.WriteString("Unexpected token(s) at ")
-		for i, t := range tokens {
+		b := &strings.Builder{}
+		b.WriteString("Unexpected token(s)\n")
+		for _, t := range tokens {
 			if t.Type == ITOK_INVALID {
-				b.WriteString(fmt.Sprint(i, ", "))
+				b.WriteString(t.Text)
+				suggestion, goodSuggestion := util.Nearest(
+					t.Text,
+					inter.keywords.commands,
+					util.LevensteinDistance,
+					5,
+				)
+				if goodSuggestion {
+					fmt.Fprintf(b, ": Did you mean '%s'?", suggestion)
+				}
+				b.WriteByte('\n')
 			}
 		}
 		return false, errors.New(b.String())
@@ -118,13 +157,16 @@ out:
 			} else {
 				v, ok := inter.env[t.Text]
 				if !ok {
-					return false, fmt.Errorf("No env var: %s", t.Text)
+					return false, fmt.Errorf("No env var %s", t.Text)
 				}
 				fmt.Fprintln(w, t.Text, ":", v)
 			}
 			break out
 		case ITOK_CMD_LET:
 			if variableName != "" {
+				if _, ok := inter.State[variableName]; !ok {
+					inter.keywords.variables = append(inter.keywords.variables, variableName)
+				}
 				inter.State[variableName] = carryValue
 				carryValue.Type = VAL_INVALID
 			}
@@ -133,9 +175,16 @@ out:
 			if len(tokens) == 1 {
 				fmt.Fprintln(w, "Deleting all variables")
 				inter.State = make(State)
+				inter.keywords.variables = inter.keywords.variables[:0]
 			} else {
 				// HACK: variable name is not evaluated correctly so just look at the next token
-				delete(inter.State, tokens[i+1].Text)
+				varName := tokens[i+1].Text
+				idx := slices.Index(inter.keywords.variables, varName)
+				if idx > 0 {
+					inter.keywords.variables[idx] = inter.keywords.variables[len(inter.keywords.variables)-1]
+					inter.keywords.variables = inter.keywords.variables[:len(inter.keywords.variables)-1]
+				}
+				delete(inter.State, varName)
 			}
 			carryValue.Type = VAL_INVALID
 			break out
@@ -146,12 +195,22 @@ out:
 			} else {
 				carryValue, ok = inter.State[tokens[1].Text]
 				if !ok {
-					return false, fmt.Errorf("No variable %s", tokens[1].Text)
+					suggestion, ok := util.Nearest(
+						tokens[1].Text,
+						inter.keywords.variables,
+						util.LevensteinDistance,
+						5,
+					)
+					suggestionText := ""
+					if ok {
+						suggestionText = fmt.Sprintf(": Did you mean '%s'?", suggestion)
+					}
+					return false, fmt.Errorf("No variable %s%s", tokens[1].Text, suggestionText)
 				}
 			}
 		case ITOK_CMD_REMATCH:
 			if carryValue.Type != VAL_STRING {
-				return false, fmt.Errorf("Unable to march against argument of type: %s", carryValue.Type)
+				return false, fmt.Errorf("Unable to match against argument of type %s", carryValue.Type)
 			}
 
 			body, ok := carryValue.Val.(string)
@@ -231,14 +290,24 @@ out:
 			case "strictEq":
 				o.StrictEquality()
 			default:
-				return false, fmt.Errorf("Unrecognized optimization: %s", t.Text)
+				suggestion, ok := util.Nearest(
+					t.Text,
+					inter.keywords.optimizations,
+					util.LevensteinDistance,
+					4,
+				)
+				suggestionTxt := ""
+				if ok {
+					suggestionTxt = fmt.Sprintf(": Did you mean '%s'?", suggestion)
+				}
+				return false, fmt.Errorf("Unrecognized optimization %s%s", t.Text, suggestionTxt)
 			}
 
 			carryValue.Type = VAL_CLAUSE
 			carryValue.Val = clause
 		case ITOK_CMD_COMPILE:
 			if carryValue.Type != VAL_CLAUSE {
-				return false, fmt.Errorf("Unable to compile argument of type: %s", carryValue)
+				return false, fmt.Errorf("Unable to compile argument of type %s", carryValue)
 			}
 
 			clause, ok := carryValue.Val.(*query.Clause)
@@ -259,7 +328,17 @@ out:
 			if i == len(tokens)-1 {
 				carryValue, ok = inter.State[t.Text]
 				if !ok {
-					return false, fmt.Errorf("No variable: %s", t.Text)
+					suggestion, ok := util.Nearest(
+						t.Text,
+						inter.keywords.variables,
+						util.LevensteinDistance,
+						4,
+					)
+					suggestionTxt := ""
+					if ok {
+						suggestionTxt = fmt.Sprintf(": Did you mean '%s'?", suggestion)
+					}
+					return false, fmt.Errorf("No variable %s%s", t.Text, suggestionTxt)
 				}
 			} else {
 				variableName = t.Text
@@ -270,7 +349,7 @@ out:
 		case ITOK_VAL_INT:
 			val, err := strconv.Atoi(t.Text)
 			if err != nil {
-				return false, fmt.Errorf("Unable to parse as integer: %v", err)
+				return false, fmt.Errorf("Unable to parse as integer %v", err)
 			}
 			carryValue.Type = VAL_INT
 			carryValue.Val = val
@@ -290,7 +369,7 @@ out:
 				}
 				length = len(toks)
 			default:
-				return false, fmt.Errorf("Unable to get length of argument with type: %s", carryValue.Type)
+				return false, fmt.Errorf("Unable to get length of argument with type %s", carryValue.Type)
 			}
 			carryValue.Type = VAL_INT
 			carryValue.Val = length
@@ -300,7 +379,7 @@ out:
 			case VAL_STRING:
 			case VAL_TOKENS:
 			default:
-				return false, fmt.Errorf("Cannot slice argument: %v", cType)
+				return false, fmt.Errorf("Cannot slice argument %v", cType)
 			}
 			return false, fmt.Errorf("not implemented")
 		}
@@ -428,4 +507,10 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
 	fmt.Fprintln(w, "compile (clause|name)                 - compile clause into query")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")
+}
+
+func init() {
+	for _, opt := range optimizations {
+		commands = append(commands, "opt_"+opt)
+	}
 }
