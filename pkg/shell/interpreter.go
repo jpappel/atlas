@@ -136,12 +136,12 @@ func (inter *Interpreter) Eval(w io.Writer, tokens []IToken) (bool, error) {
 		return false, errors.New(b.String())
 	}
 
-	var variableName string
-	var carryValue Value
+	stack := make([]Value, 0, 5)
 	var ok bool
 out:
 	for i := len(tokens) - 1; i >= 0; i-- {
 		t := tokens[i]
+		top := len(stack) - 1
 		switch t.Type {
 		case ITOK_CMD_HELP:
 			printHelp(w)
@@ -165,22 +165,44 @@ out:
 			}
 			break out
 		case ITOK_CMD_LET:
-			if variableName != "" {
-				if _, ok := inter.State[variableName]; !ok {
-					inter.keywords.variables = append(inter.keywords.variables, variableName)
-				}
-				inter.State[variableName] = carryValue
-				carryValue.Type = VAL_INVALID
+			if top < 1 {
+				return false, fmt.Errorf("Expected 2 args for let, recieved %d", len(stack))
 			}
+
+			name := stack[top]
+			val := stack[top-1]
+			stack = stack[:top-1]
+
+			if name.Type != VAL_STRING {
+				return false, fmt.Errorf("Unable to name variable using non-string %s", name.Type)
+			} else if varName, ok := name.Val.(string); !ok {
+				return true, fmt.Errorf("Type corruption during let, expected string")
+			} else if varName == "" {
+				return false, fmt.Errorf("Cannot use the empty string as a variable name")
+			} else {
+				if _, ok := inter.State[varName]; !ok {
+					inter.keywords.variables = append(inter.keywords.variables, varName)
+				}
+				inter.State[varName] = val
+			}
+
 			break out
 		case ITOK_CMD_DEL:
-			if len(tokens) == 1 {
+			if top < 0 {
 				fmt.Fprintln(w, "Deleting all variables")
 				inter.State = make(State)
 				inter.keywords.variables = inter.keywords.variables[:0]
 			} else {
-				// HACK: variable name is not evaluated correctly so just look at the next token
-				varName := tokens[i+1].Text
+				name := stack[top]
+				stack = stack[:top]
+
+				var varName string
+				if name.Type != VAL_STRING {
+					return false, fmt.Errorf("Cannot delete non-string named variable")
+				} else if varName, ok = name.Val.(string); !ok {
+					return true, fmt.Errorf("Type corruption during del, expected string")
+				}
+
 				idx := slices.Index(inter.keywords.variables, varName)
 				if idx > 0 {
 					inter.keywords.variables[idx] = inter.keywords.variables[len(inter.keywords.variables)-1]
@@ -188,37 +210,48 @@ out:
 				}
 				delete(inter.State, varName)
 			}
-			carryValue.Type = VAL_INVALID
 			break out
 		case ITOK_CMD_PRINT:
-			if len(tokens) == 1 {
+			if top < 0 {
 				fmt.Fprintln(w, "Variables:")
 				fmt.Fprintln(w, inter.State)
 			} else {
-				carryValue, ok = inter.State[tokens[1].Text]
-				if !ok {
+				name := stack[top]
+				stack = stack[:top]
+
+				if name.Type != VAL_STRING {
+					return false, fmt.Errorf("Cannot print variable with non-string name")
+				} else if varName, ok := name.Val.(string); !ok {
+					return true, fmt.Errorf("Type corruption during print, expected string")
+				} else if val, ok := inter.State[varName]; !ok {
 					suggestion, ok := util.Nearest(
-						tokens[1].Text,
+						varName,
 						inter.keywords.variables,
 						util.LevensteinDistance,
-						5,
+						3,
 					)
 					suggestionText := ""
 					if ok {
 						suggestionText = fmt.Sprintf(": Did you mean '%s'?", suggestion)
 					}
 					return false, fmt.Errorf("No variable %s%s", tokens[1].Text, suggestionText)
+				} else {
+					fmt.Fprintln(w, val)
 				}
-				fmt.Fprintln(w, carryValue)
-				carryValue.Type = VAL_INVALID
 			}
 			break out
 		case ITOK_CMD_REMATCH:
-			if carryValue.Type != VAL_STRING {
-				return false, fmt.Errorf("Unable to match against argument of type %s", carryValue.Type)
+			if top < 0 {
+				return false, fmt.Errorf("No argument to match against")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
+			if arg.Type != VAL_STRING {
+				return false, fmt.Errorf("Unable to match against argument of type %s", arg.Type)
 			}
 
-			body, ok := carryValue.Val.(string)
+			body, ok := arg.Val.(string)
 			if !ok {
 				return true, errors.New("Type corruption during rematch, expected string")
 			}
@@ -235,27 +268,39 @@ out:
 				}
 				b.WriteByte('\n')
 			}
-			carryValue.Val = b.String()
+			stack = append(stack, Value{VAL_STRING, b.String()})
 		case ITOK_CMD_REPATTERN:
 			fmt.Fprintln(w, query.LexRegexPattern)
 			break out
 		case ITOK_CMD_TOKENIZE:
-			if carryValue.Type != VAL_STRING {
-				return false, fmt.Errorf("Unable to tokenize argument of type: %s", carryValue.Type)
+			if top < 0 {
+				return false, fmt.Errorf("No argument provided to tokenize")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
+			if arg.Type != VAL_STRING {
+				return false, fmt.Errorf("Unable to tokenize argument of type: %s", arg.Type)
 			}
 
-			rawQuery, ok := carryValue.Val.(string)
+			rawQuery, ok := arg.Val.(string)
 			if !ok {
 				return true, errors.New("Type corruption during tokenize, expected string")
 			}
-			carryValue.Type = VAL_TOKENS
-			carryValue.Val = query.Lex(rawQuery)
+
+			stack = append(stack, Value{VAL_TOKENS, query.Lex(rawQuery)})
 		case ITOK_CMD_PARSE:
-			if carryValue.Type != VAL_TOKENS {
-				return false, fmt.Errorf("Unable to parse argument of type: %s", carryValue.Type)
+			if top < 0 {
+				return false, fmt.Errorf("No argument to parse")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
+			if arg.Type != VAL_TOKENS {
+				return false, fmt.Errorf("Unable to parse argument of type: %s", arg.Type)
 			}
 
-			queryTokens, ok := carryValue.Val.([]query.Token)
+			queryTokens, ok := arg.Val.([]query.Token)
 			if !ok {
 				return true, errors.New("Type corruption during parse, expected []query.Tokens")
 			}
@@ -264,11 +309,17 @@ out:
 			if err != nil {
 				return false, err
 			}
-			carryValue.Type = VAL_CLAUSE
-			carryValue.Val = clause
+
+			stack = append(stack, Value{VAL_CLAUSE, clause})
 		case ITOK_CMD_LVL_OPTIMIZE:
-			if carryValue.Type != VAL_CLAUSE {
-				return false, fmt.Errorf("Unable to optimize argument of type: %s", carryValue)
+			if top < 0 {
+				return false, fmt.Errorf("No argument to leveled optimize")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
+			if arg.Type != VAL_CLAUSE {
+				return false, fmt.Errorf("Unable to optimize argument of type: %s", arg.Type)
 			}
 
 			level, err := strconv.Atoi(t.Text)
@@ -276,21 +327,26 @@ out:
 				return false, fmt.Errorf("Cannot parse optimization level %s", t.Text)
 			}
 
-			clause, ok := carryValue.Val.(*query.Clause)
+			clause, ok := arg.Val.(*query.Clause)
 			if !ok {
 				return true, errors.New("Type corruption during optimization, expected *query.Clause")
 			}
 			o := query.NewOptimizer(clause, inter.Workers)
 			o.Optimize(level)
 
-			carryValue.Type = VAL_CLAUSE
-			carryValue.Val = clause
+			stack = append(stack, Value{VAL_CLAUSE, clause})
 		case ITOK_CMD_OPTIMIZE:
-			if carryValue.Type != VAL_CLAUSE {
-				return false, fmt.Errorf("Unable to optimize argument of type: %s", carryValue)
+			if top < 0 {
+				return false, fmt.Errorf("No argument to optimize")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
+			if arg.Type != VAL_CLAUSE {
+				return false, fmt.Errorf("Unable to optimize argument of type: %s", arg.Type)
 			}
 
-			clause, ok := carryValue.Val.(*query.Clause)
+			clause, ok := arg.Val.(*query.Clause)
 			if !ok {
 				return true, errors.New("Type corruption during optimization, expected *query.Clause")
 			}
@@ -327,14 +383,19 @@ out:
 				return false, fmt.Errorf("Unrecognized optimization %s%s", t.Text, suggestionTxt)
 			}
 
-			carryValue.Type = VAL_CLAUSE
-			carryValue.Val = clause
+			stack = append(stack, Value{VAL_CLAUSE, clause})
 		case ITOK_CMD_COMPILE:
-			if carryValue.Type != VAL_CLAUSE {
-				return false, fmt.Errorf("Unable to compile argument of type %s", carryValue)
+			if top < 0 {
+				return false, fmt.Errorf("No argument to compile")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
+			if arg.Type != VAL_CLAUSE {
+				return false, fmt.Errorf("Unable to compile argument of type %s", arg.Type)
 			}
 
-			clause, ok := carryValue.Val.(*query.Clause)
+			clause, ok := arg.Val.(*query.Clause)
 			if !ok {
 				return true, errors.New("Type corruption during compilation, expected *query.Clause")
 			}
@@ -344,73 +405,122 @@ out:
 				return false, err
 			}
 
-			carryValue.Val = artifact
-			carryValue.Type = VAL_ARTIFACT
+			stack = append(stack, Value{VAL_ARTIFACT, artifact})
 		case ITOK_VAR_NAME:
-			// NOTE: very brittle, only allows expansion of a single variable
-			if i == len(tokens)-1 {
-				carryValue, ok = inter.State[t.Text]
-				if !ok {
-					suggestion, ok := util.Nearest(
-						t.Text,
-						inter.keywords.variables,
-						util.LevensteinDistance,
-						4,
-					)
-					suggestionTxt := ""
-					if ok {
-						suggestionTxt = fmt.Sprintf(": Did you mean '%s'?", suggestion)
-					}
-					return false, fmt.Errorf("No variable %s%s", t.Text, suggestionTxt)
+			val, ok := inter.State[t.Text]
+			if !ok {
+				suggestion, ok := util.Nearest(
+					t.Text,
+					inter.keywords.variables,
+					util.LevensteinDistance,
+					4,
+				)
+				suggestionTxt := ""
+				if ok {
+					suggestionTxt = fmt.Sprintf(": Did you mean '%s'?", suggestion)
 				}
-			} else {
-				variableName = t.Text
+				return false, fmt.Errorf("No variable %s%s", t.Text, suggestionTxt)
 			}
+			stack = append(stack, val)
 		case ITOK_VAL_STR:
-			carryValue.Type = VAL_STRING
-			carryValue.Val = t.Text
+			stack = append(stack, Value{VAL_STRING, t.Text})
 		case ITOK_VAL_INT:
 			val, err := strconv.Atoi(t.Text)
 			if err != nil {
 				return false, fmt.Errorf("Unable to parse as integer %v", err)
 			}
-			carryValue.Type = VAL_INT
-			carryValue.Val = val
+			stack = append(stack, Value{VAL_INT, val})
 		case ITOK_CMD_LEN:
+			if top < 0 {
+				return false, fmt.Errorf("No argument to get the length of")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+
 			var length int
-			switch cType := carryValue.Type; cType {
+			switch cType := arg.Type; cType {
 			case VAL_STRING:
-				s, ok := carryValue.Val.(string)
+				s, ok := arg.Val.(string)
 				if !ok {
 					return true, fmt.Errorf("Type corruption during len, expected string")
 				}
 				length = len(s)
 			case VAL_TOKENS:
-				toks, ok := carryValue.Val.([]query.Token)
+				toks, ok := arg.Val.([]query.Token)
 				if !ok {
 					return true, fmt.Errorf("Type corruption during len, expected []query.Token")
 				}
 				length = len(toks)
 			default:
-				return false, fmt.Errorf("Unable to get length of argument with type %s", carryValue.Type)
+				return false, fmt.Errorf("Unable to get length of argument with type %s", arg.Type)
 			}
-			carryValue.Type = VAL_INT
-			carryValue.Val = length
+
+			stack = append(stack, Value{VAL_INT, length})
 		case ITOK_CMD_SLICE:
-			// TODO: get start and end of range
-			switch cType := carryValue.Type; cType {
-			case VAL_STRING:
-			case VAL_TOKENS:
-			default:
-				return false, fmt.Errorf("Cannot slice argument %v", cType)
+			if top < 2 {
+				return false, fmt.Errorf("Expected 3 arguments for slice, got %d", len(stack))
 			}
-			return false, fmt.Errorf("not implemented")
+			arg := stack[top]
+			start := stack[top-1]
+			stop := stack[top-2]
+			stack = stack[:top-2]
+
+			var startIdx, stopIdx int
+			if start.Type != VAL_INT {
+				return false, fmt.Errorf("Expected integer to start slicing, got %s", start.Type)
+			} else if stop.Type != VAL_INT {
+				return false, fmt.Errorf("Expected integer to stop slicing, got %s", stop.Type)
+			} else {
+				startIdx, ok = start.Val.(int)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during slice, expected integer")
+				}
+				stopIdx, ok = stop.Val.(int)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during slice, expected integer")
+				}
+			}
+
+			switch arg.Type {
+			case VAL_STRING:
+				s, ok := arg.Val.(string)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during slice, expected string")
+				}
+
+				if 0 <= startIdx && startIdx <= stopIdx && stopIdx <= len(s) {
+					stack = append(stack, Value{VAL_STRING, s[startIdx:stopIdx]})
+				} else {
+					return false, fmt.Errorf(
+						"Indexes [%d:%d] out of range [0:%d]",
+						startIdx, stopIdx, len(s),
+					)
+				}
+			case VAL_TOKENS:
+				qTokens, ok := arg.Val.([]query.Token)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during slice, expected []query.Token")
+				}
+
+				if 0 <= startIdx && startIdx <= stopIdx && stopIdx <= len(qTokens) {
+					stack = append(stack, Value{VAL_TOKENS, qTokens[startIdx:stopIdx]})
+				} else {
+					return false, fmt.Errorf(
+						"Indexes [%d:%d] out of range [0:%d]",
+						startIdx, stopIdx, len(qTokens),
+					)
+				}
+			default:
+				return false, fmt.Errorf("Cannot slice argument of type %s", arg.Type)
+			}
 		}
 	}
 
-	if carryValue.Type != VAL_INVALID {
-		fmt.Fprintln(w, carryValue)
-		inter.State["_"] = carryValue
+	for _, e := range stack {
+		fmt.Fprintln(w, e)
+	}
+	if len(stack) > 0 {
+		inter.State["_"] = stack[len(stack)-1]
 	}
 
 	return false, nil
@@ -468,12 +578,10 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{ITOK_CMD_OPTIMIZE, trimmedWord[l:]})
 		} else if trimmedWord == "compile" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_COMPILE})
-		} else if prevType == ITOK_CMD_LET {
-			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_CMD_DEL {
-			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_CMD_PRINT {
-			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
+		} else if unicode.IsDigit(rune(trimmedWord[0])) {
+			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
+		} else if prevType == ITOK_CMD_LET || prevType == ITOK_CMD_DEL || prevType == ITOK_CMD_PRINT {
+			tokens = append(tokens, IToken{ITOK_VAL_STR, trimmedWord})
 		} else if prevType == ITOK_CMD_LEN || prevType == ITOK_CMD_SLICE {
 			if trimmedWord[0] == '`' {
 				_, strLiteral, _ := strings.Cut(word, "`")
@@ -490,12 +598,10 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			}
 		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_OPTIMIZE || prevType == ITOK_CMD_LVL_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_VAR_NAME && trimmedWord[0] == '`' {
+		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_LET && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
 			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
-		} else if prevType == ITOK_VAR_NAME && unicode.IsDigit(rune(trimmedWord[0])) {
-			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
-		} else if prevType == ITOK_VAL_STR {
+		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type != ITOK_CMD_LET {
 			tokens[len(tokens)-1].Text += " " + word
 		} else {
 			tokens = append(tokens, IToken{ITOK_INVALID, trimmedWord})
