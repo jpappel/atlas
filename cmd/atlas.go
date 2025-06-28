@@ -82,8 +82,9 @@ func main() {
 	args := flag.Args()
 
 	queryFlags := struct {
-		Output       query.Outputer
-		CustomFormat string
+		Output            query.Outputer
+		CustomFormat      string
+		OptimizationLevel int
 	}{}
 	indexFlags := struct {
 		Filters []index.DocFilter
@@ -119,6 +120,7 @@ func main() {
 				return fmt.Errorf("Unrecognized output format: %s", arg)
 			})
 		queryFs.StringVar(&queryFlags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "format string for --outFormat custom, see EXAMPLES for more details")
+		queryFs.IntVar(&queryFlags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
 
 		queryFs.Parse(args[1:])
 	case "index":
@@ -150,7 +152,7 @@ func main() {
 	case "help":
 		printHelp()
 		flag.PrintDefaults()
-		os.Exit(0)
+		return
 	case "shell":
 		shellFs.Parse(args[1:])
 	default:
@@ -186,16 +188,41 @@ func main() {
 	querier := data.NewQuery(globalFlags.DBPath)
 	defer querier.Close()
 
+	go func() {
+		if r := recover(); r != nil {
+			os.Exit(1)
+		}
+	}()
+
 	// command specific
 	switch command {
 	case "query":
-		// TODO: evaluate query
-		s, err := queryFlags.Output.Output(nil)
+		searchQuery := strings.Join(queryFs.Args(), " ")
+		tokens := query.Lex(searchQuery)
+		clause, err := query.Parse(tokens)
 		if err != nil {
-			slog.Error("Error while outputing query results", slog.String("err", err.Error()))
-			return
+			fmt.Fprintln(os.Stderr, "Failed to parse query: ", err)
+			panic(err)
 		}
-		fmt.Print(s)
+
+		if queryFlags.OptimizationLevel >= 0 {
+			o := query.NewOptimizer(clause, globalFlags.NumWorkers)
+			o.Optimize(queryFlags.OptimizationLevel)
+		}
+
+		artifact, err := clause.Compile()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("query\n", artifact.Query)
+		fmt.Println("args\n", strings.Join(artifact.Args, ", "))
+		// TODO: evaluate query
+		// s, err := queryFlags.Output.Output(nil)
+		// if err != nil {
+		// 	slog.Error("Error while outputing query results", slog.String("err", err.Error()))
+		// 	return
+		// }
+		// fmt.Print(s)
 	case "index":
 		idx := index.Index{Root: globalFlags.IndexRoot, Filters: indexFlags.Filters}
 		if logger.Enabled(context.Background(), slog.LevelDebug) {
@@ -233,7 +260,7 @@ func main() {
 		interpreter := shell.NewInterpreter(state, env, globalFlags.NumWorkers)
 		if err := interpreter.Run(); err != nil && err != io.EOF {
 			slog.Error("Fatal error occured", slog.String("err", err.Error()))
-			os.Exit(1)
+			panic(err)
 		}
 	}
 

@@ -322,6 +322,35 @@ func (s Statements) OperatorPartition() iter.Seq2[opType, Statements] {
 	}
 }
 
+// Partition statements by their negated status without copying, similar to
+// CategoryPartition and OperatorPartition
+func (s Statements) NegatedPartition() iter.Seq2[bool, Statements] {
+	if !slices.IsSortedFunc(s, StatementCmp) {
+		slices.SortFunc(s, StatementCmp)
+	}
+
+	return func(yield func(bool, Statements) bool) {
+		firstNegated := -1
+		for i, stmt := range s {
+			if stmt.Negated {
+				firstNegated = i
+			}
+		}
+
+		if firstNegated > 0 {
+			if !yield(false, s[:firstNegated]) {
+				return
+			} else if !yield(true, s[firstNegated:]) {
+				return
+			}
+		} else {
+			if !yield(false, s) {
+				return
+			}
+		}
+	}
+}
+
 func (c Clause) String() string {
 	b := &strings.Builder{}
 	c.buildString(b, 0)
@@ -459,7 +488,7 @@ func Parse(tokens []Token) (*Clause, error) {
 			}
 			clause.Operator = COP_OR
 		case TOK_OP_NEG:
-			if !prevToken.Type.Any(TOK_CLAUSE_OR, TOK_CLAUSE_AND, TOK_VAL_STR, TOK_VAL_DATETIME) {
+			if !prevToken.Type.Any(TOK_CLAUSE_OR, TOK_CLAUSE_AND, TOK_VAL_STR, TOK_VAL_DATETIME, TOK_CLAUSE_END) {
 				return nil, &TokenError{
 					got:      token,
 					gotPrev:  prevToken,

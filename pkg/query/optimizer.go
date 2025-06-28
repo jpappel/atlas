@@ -47,6 +47,38 @@ func NewOptimizer(root *Clause, workers uint) Optimizer {
 	}
 }
 
+// Optimize clause according to level.
+// level 0 is automatic and levels < 0 do nothing.
+func (o Optimizer) Optimize(level int) {
+	o.Simplify()
+	if level < 0 {
+		return
+	} else if level == 0 {
+		// TODO: determine smarter level determination strategy
+		level = o.root.Depth()
+	}
+
+	oldDepth := o.root.Depth()
+	for range level {
+		// clause level parallel
+		o.Compact()
+		o.StrictEquality()
+		o.Tighten()
+		o.Contradictions()
+		// parallel + serial
+		o.Tidy()
+		// purely serial
+		o.Flatten()
+
+		depth := o.root.Depth()
+		if depth == oldDepth {
+			break
+		} else {
+			oldDepth = depth
+		}
+	}
+}
+
 // Perform optimizations in parallel. They should **NOT** mutate the tree
 func (o Optimizer) parallel(optimize func(*Clause)) {
 	jobs := make(chan *Clause, o.workers)
@@ -131,6 +163,12 @@ func (o *Optimizer) Flatten() {
 	})
 }
 
+// Remove multiples of equivalent statements within the same clause
+//
+// Examples
+//
+//	(and a="Fred Flinstone" a="Fred Flinstone") --> (and a="Fred Flinstone")
+//	(or a=Shaggy -a!=Shaggy) --> (or a=Shaggy)
 func (o *Optimizer) Compact() {
 	o.parallel(func(c *Clause) {
 		c.Statements = slices.CompactFunc(c.Statements, StatementEq)

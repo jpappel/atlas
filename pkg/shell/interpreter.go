@@ -55,6 +55,7 @@ const (
 	ITOK_CMD_SLICE
 	ITOK_CMD_REMATCH
 	ITOK_CMD_REPATTERN
+	ITOK_CMD_LVL_OPTIMIZE
 	ITOK_CMD_OPTIMIZE
 	ITOK_CMD_TOKENIZE
 	ITOK_CMD_PARSE
@@ -88,6 +89,7 @@ var commands = []string{
 	"tokenize",
 	"parse",
 	"compile",
+	"optimize_",
 }
 
 func NewInterpreter(initialState State, env map[string]string, workers uint) *Interpreter {
@@ -207,7 +209,10 @@ out:
 					}
 					return false, fmt.Errorf("No variable %s%s", tokens[1].Text, suggestionText)
 				}
+				fmt.Fprintln(w, carryValue)
+				carryValue.Type = VAL_INVALID
 			}
+			break out
 		case ITOK_CMD_REMATCH:
 			if carryValue.Type != VAL_STRING {
 				return false, fmt.Errorf("Unable to match against argument of type %s", carryValue.Type)
@@ -259,6 +264,25 @@ out:
 			if err != nil {
 				return false, err
 			}
+			carryValue.Type = VAL_CLAUSE
+			carryValue.Val = clause
+		case ITOK_CMD_LVL_OPTIMIZE:
+			if carryValue.Type != VAL_CLAUSE {
+				return false, fmt.Errorf("Unable to optimize argument of type: %s", carryValue)
+			}
+
+			level, err := strconv.Atoi(t.Text)
+			if err != nil {
+				return false, fmt.Errorf("Cannot parse optimization level %s", t.Text)
+			}
+
+			clause, ok := carryValue.Val.(*query.Clause)
+			if !ok {
+				return true, errors.New("Type corruption during optimization, expected *query.Clause")
+			}
+			o := query.NewOptimizer(clause, inter.Workers)
+			o.Optimize(level)
+
 			carryValue.Type = VAL_CLAUSE
 			carryValue.Val = clause
 		case ITOK_CMD_OPTIMIZE:
@@ -315,14 +339,13 @@ out:
 				return true, errors.New("Type corruption during compilation, expected *query.Clause")
 			}
 
-			query, params, err := clause.Compile()
+			artifact, err := clause.Compile()
 			if err != nil {
 				return false, err
 			}
 
-			fmt.Fprintf(w, "query:\n%s\n--------\nparams:\n%s\n", query, params)
-			carryValue.Type = VAL_INVALID
-			break out
+			carryValue.Val = artifact
+			carryValue.Type = VAL_ARTIFACT
 		case ITOK_VAR_NAME:
 			// NOTE: very brittle, only allows expansion of a single variable
 			if i == len(tokens)-1 {
@@ -437,6 +460,8 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_TOKENIZE})
 		} else if trimmedWord == "parse" {
 			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
+		} else if l := len("optimize_"); len(trimmedWord) > l && trimmedWord[:l] == "optimize_" {
+			tokens = append(tokens, IToken{ITOK_CMD_LVL_OPTIMIZE, trimmedWord[l:]})
 		} else if l := len("env_"); len(trimmedWord) > l && trimmedWord[:l] == "env_" {
 			tokens = append(tokens, IToken{ITOK_CMD_ENV, trimmedWord[l:]})
 		} else if l := len("opt_"); len(trimmedWord) > l && trimmedWord[:l] == "opt_" {
@@ -463,7 +488,7 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			} else {
 				tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 			}
-		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
+		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_OPTIMIZE || prevType == ITOK_CMD_LVL_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAR_NAME && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
@@ -497,7 +522,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "tokenize (string|name)                - tokenize a string")
 	fmt.Fprintln(w, "        ex. tokenize `author:me")
 	fmt.Fprintln(w, "parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Fprintln(w, "opt_<subcommand> (clause|name)        - optimize clause tree")
+	fmt.Fprintln(w, "optimize_<level> (clause|name)        - optimize clause tree to <level>")
+	fmt.Fprintln(w, "opt_<subcommand> (clause|name)        - apply specific optimization to clause tree")
 	fmt.Fprintln(w, "    sort                              - sort statements")
 	fmt.Fprintln(w, "    flatten                           - flatten clauses")
 	fmt.Fprintln(w, "    compact                           - compact equivalent statements")

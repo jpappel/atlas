@@ -9,77 +9,27 @@ import (
 
 const MAX_CLAUSE_DEPTH int = 16
 
-func (stmt Statement) Compile(b *strings.Builder) (*string, error) {
-	if stmt.Negated {
-		b.WriteString("NOT ")
-	}
-
-	switch stmt.Category {
-	case CAT_TITLE:
-		b.WriteString("title ")
-	case CAT_AUTHOR:
-		b.WriteString("author ")
-	case CAT_DATE:
-		b.WriteString("date ")
-	case CAT_FILETIME:
-		b.WriteString("fileTime ")
-	case CAT_TAGS:
-		b.WriteString("tags ")
-	case CAT_LINKS:
-		b.WriteString("links ")
-	default:
-		return nil, &CompileError{
-			fmt.Sprint("unknown or invalid category ", stmt.Category.String()),
-		}
-	}
-	switch stmt.Operator {
-	case OP_EQ:
-		if stmt.Category.IsSet() {
-			b.WriteString("IN ")
-		} else {
-			b.WriteString("= ")
-		}
-	case OP_AP:
-		b.WriteString("LIKE ")
-	case OP_NE:
-		b.WriteString("!= ")
-	case OP_LT:
-		b.WriteString("< ")
-	case OP_LE:
-		b.WriteString("<= ")
-	case OP_GE:
-		b.WriteString(">= ")
-	case OP_GT:
-		b.WriteString("> ")
-	default:
-		return nil, &CompileError{
-			fmt.Sprint("unknown or invalid operand ", stmt.Operator.String()),
-		}
-	}
-
-	switch stmt.Value.Type() {
-	case VAL_STR:
-		s, ok := stmt.Value.(StringValue)
-		if !ok {
-			panic(CompileError{"type corruption in string value"})
-		}
-		b.WriteString("(?) ")
-		return &s.S, nil
-	case VAL_DATETIME:
-		dt, ok := stmt.Value.(DatetimeValue)
-		if !ok {
-			panic(CompileError{"type corruption in datetime value"})
-		}
-		fmt.Fprint(b, dt.D.Unix(), " ")
-	default:
-		return nil, &CompileError{
-			fmt.Sprint("unknown or invalid value type ", stmt.Value.Type()),
-		}
-	}
-	return nil, nil
+type CompilationArtifact struct {
+	Query string
+	Args  []string
 }
 
-func (s Statements) Compile(b *strings.Builder, delim string) ([]string, error) {
+func (art CompilationArtifact) String() string {
+	b := strings.Builder{}
+	fmt.Fprintln(&b, art.Query)
+	b.WriteByte('[')
+	for i, arg := range art.Args {
+		if i != len(art.Args)-1 {
+			fmt.Fprintf(&b, "`%s`, ", arg)
+		} else {
+			fmt.Fprintf(&b, "`%s`", arg)
+		}
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+func (s Statements) buildCompile(b *strings.Builder, delim string) ([]string, error) {
 	var args []string
 
 	sCount := 0
@@ -185,6 +135,7 @@ func (s Statements) Compile(b *strings.Builder, delim string) ([]string, error) 
 
 					start, end := util.FuzzDatetime(d.D)
 
+					b.WriteString("NOT ")
 					b.WriteString(opStr)
 					fmt.Fprint(b, start.Unix(), " ")
 					b.WriteString("AND ")
@@ -199,6 +150,9 @@ func (s Statements) Compile(b *strings.Builder, delim string) ([]string, error) 
 			} else {
 				idx := 0
 				for _, stmt := range opStmts {
+					if stmt.Negated {
+						b.WriteString("NOT ")
+					}
 					b.WriteString(catStr)
 					b.WriteString(opStr)
 					arg, ok := stmt.Value.buildCompile(b)
@@ -229,9 +183,9 @@ func (s Statements) Compile(b *strings.Builder, delim string) ([]string, error) 
 	return args, nil
 }
 
-func (root Clause) Compile() (string, []string, error) {
+func (root Clause) Compile() (CompilationArtifact, error) {
 	if d := root.Depth(); d > MAX_CLAUSE_DEPTH {
-		return "", nil, &CompileError{
+		return CompilationArtifact{}, &CompileError{
 			fmt.Sprintf("exceeded maximum clause depth: %d > %d", d, MAX_CLAUSE_DEPTH),
 		}
 	}
@@ -239,9 +193,9 @@ func (root Clause) Compile() (string, []string, error) {
 	b := strings.Builder{}
 	args, err := root.buildCompile(&b)
 	if err != nil {
-		return "", nil, err
+		return CompilationArtifact{}, err
 	}
-	return b.String(), args, nil
+	return CompilationArtifact{b.String(), args}, nil
 }
 
 func (c Clause) buildCompile(b *strings.Builder) ([]string, error) {
@@ -257,7 +211,7 @@ func (c Clause) buildCompile(b *strings.Builder) ([]string, error) {
 		return nil, &CompileError{fmt.Sprint("invalid clause operator ", c.Operator)}
 	}
 
-	args, err := c.Statements.Compile(b, delim)
+	args, err := c.Statements.buildCompile(b, delim)
 	if err != nil {
 		return nil, err
 	}
