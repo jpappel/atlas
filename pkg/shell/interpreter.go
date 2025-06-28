@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,18 +79,23 @@ var optimizations = []string{
 	"strictEq",
 }
 
-var commands = []string{
-	"help",
-	"clear",
-	"let",
-	"del",
-	"slice",
-	"rematch",
-	"repattern",
-	"tokenize",
-	"parse",
-	"compile",
-	"optimize_",
+var commands = map[string]ITokType{
+	"help":      ITOK_CMD_HELP,
+	"clear":     ITOK_CMD_CLEAR,
+	"exit":      ITOK_CMD_EXIT,
+	"let":       ITOK_CMD_LET,
+	"del":       ITOK_CMD_DEL,
+	"print":     ITOK_CMD_PRINT,
+	"len":       ITOK_CMD_LEN,
+	"slice":     ITOK_CMD_SLICE,
+	"rematch":   ITOK_CMD_REMATCH,
+	"repattern": ITOK_CMD_REPATTERN,
+	"tokenize":  ITOK_CMD_TOKENIZE,
+	"optimize":  ITOK_CMD_LVL_OPTIMIZE,
+	"opt":       ITOK_CMD_OPTIMIZE,
+	"parse":     ITOK_CMD_PARSE,
+	"env":       ITOK_CMD_ENV,
+	"compile":   ITOK_CMD_COMPILE,
 }
 
 func NewInterpreter(initialState State, env map[string]string, workers uint) *Interpreter {
@@ -97,7 +103,7 @@ func NewInterpreter(initialState State, env map[string]string, workers uint) *In
 		State: initialState,
 		env:   env,
 		keywords: keywords{
-			commands:      commands,
+			commands:      slices.Collect(maps.Keys(commands)),
 			optimizations: optimizations,
 		},
 		Workers: workers,
@@ -125,7 +131,7 @@ func (inter *Interpreter) Eval(w io.Writer, tokens []IToken) (bool, error) {
 					t.Text,
 					inter.keywords.commands,
 					util.LevensteinDistance,
-					5,
+					min(len(t.Text), 4),
 				)
 				if goodSuggestion {
 					fmt.Fprintf(b, ": Did you mean '%s'?", suggestion)
@@ -152,16 +158,23 @@ out:
 			fmt.Fprint(w, "\033[H\033[J")
 			break out
 		case ITOK_CMD_ENV:
-			if t.Text == "" {
+			if top < 0 {
 				for k, v := range inter.env {
 					fmt.Fprintln(w, k, ":", v)
 				}
 			} else {
-				v, ok := inter.env[t.Text]
-				if !ok {
+				arg := stack[top]
+				stack = stack[:top]
+
+				if arg.Type != VAL_STRING {
+					return false, fmt.Errorf("Cannot get non-string environment value, %s", arg.Type)
+				} else if s, ok := arg.Val.(string); !ok {
+					return true, fmt.Errorf("Type corruption in env, expected string")
+				} else if v, ok := inter.env[s]; !ok {
 					return false, fmt.Errorf("No env var %s", t.Text)
+				} else {
+					fmt.Fprintln(w, t.Text, ":", v)
 				}
-				fmt.Fprintln(w, t.Text, ":", v)
 			}
 			break out
 		case ITOK_CMD_LET:
@@ -216,28 +229,11 @@ out:
 				fmt.Fprintln(w, "Variables:")
 				fmt.Fprintln(w, inter.State)
 			} else {
-				name := stack[top]
-				stack = stack[:top]
-
-				if name.Type != VAL_STRING {
-					return false, fmt.Errorf("Cannot print variable with non-string name")
-				} else if varName, ok := name.Val.(string); !ok {
-					return true, fmt.Errorf("Type corruption during print, expected string")
-				} else if val, ok := inter.State[varName]; !ok {
-					suggestion, ok := util.Nearest(
-						varName,
-						inter.keywords.variables,
-						util.LevensteinDistance,
-						3,
-					)
-					suggestionText := ""
-					if ok {
-						suggestionText = fmt.Sprintf(": Did you mean '%s'?", suggestion)
-					}
-					return false, fmt.Errorf("No variable %s%s", tokens[1].Text, suggestionText)
-				} else {
-					fmt.Fprintln(w, val)
+				for j := top; j >= 0; j-- {
+					v := stack[j]
+					fmt.Fprintln(w, v)
 				}
+				stack = stack[:0]
 			}
 			break out
 		case ITOK_CMD_REMATCH:
@@ -312,19 +308,21 @@ out:
 
 			stack = append(stack, Value{VAL_CLAUSE, clause})
 		case ITOK_CMD_LVL_OPTIMIZE:
-			if top < 0 {
-				return false, fmt.Errorf("No argument to leveled optimize")
+			if top < 1 {
+				return false, fmt.Errorf("Wanted 2 arguments to leveled optimize, got %d", len(stack))
 			}
-			arg := stack[top]
-			stack = stack[:top]
 
-			if arg.Type != VAL_CLAUSE {
+			level := stack[top]
+			arg := stack[top-1]
+			stack = stack[:top-1]
+
+			var l int
+			if level.Type != VAL_INT {
+				return false, fmt.Errorf("Unable to optimize argument to non-integer level %s", level.Type)
+			} else if arg.Type != VAL_CLAUSE {
 				return false, fmt.Errorf("Unable to optimize argument of type: %s", arg.Type)
-			}
-
-			level, err := strconv.Atoi(t.Text)
-			if err != nil {
-				return false, fmt.Errorf("Cannot parse optimization level %s", t.Text)
+			} else if l, ok = level.Val.(int); !ok {
+				return true, fmt.Errorf("Type Corruption while getting optimization level")
 			}
 
 			clause, ok := arg.Val.(*query.Clause)
@@ -332,18 +330,25 @@ out:
 				return true, errors.New("Type corruption during optimization, expected *query.Clause")
 			}
 			o := query.NewOptimizer(clause, inter.Workers)
-			o.Optimize(level)
+			o.Optimize(l)
 
 			stack = append(stack, Value{VAL_CLAUSE, clause})
 		case ITOK_CMD_OPTIMIZE:
-			if top < 0 {
-				return false, fmt.Errorf("No argument to optimize")
+			if top < 1 {
+				return false, fmt.Errorf("Want 2 arguments for opt, got %d", len(stack))
 			}
-			arg := stack[top]
-			stack = stack[:top]
 
-			if arg.Type != VAL_CLAUSE {
+			opt := stack[top]
+			arg := stack[top-1]
+			stack = stack[:top-1]
+
+			var optName string
+			if opt.Type != VAL_STRING {
+				return false, fmt.Errorf("Unable to use non-string optimization: %s", opt.Type)
+			} else if arg.Type != VAL_CLAUSE {
 				return false, fmt.Errorf("Unable to optimize argument of type: %s", arg.Type)
+			} else if optName, ok = opt.Val.(string); !ok {
+				return true, fmt.Errorf("Type corruption during optimization, expected string")
 			}
 
 			clause, ok := arg.Val.(*query.Clause)
@@ -352,7 +357,7 @@ out:
 			}
 
 			o := query.NewOptimizer(clause, inter.Workers)
-			switch t.Text {
+			switch optName {
 			case "simplify":
 				o.Simplify()
 			case "tighten":
@@ -371,10 +376,10 @@ out:
 				o.StrictEquality()
 			default:
 				suggestion, ok := util.Nearest(
-					t.Text,
+					optName,
 					inter.keywords.optimizations,
 					util.LevensteinDistance,
-					4,
+					min(len(optName), 4),
 				)
 				suggestionTxt := ""
 				if ok {
@@ -413,7 +418,7 @@ out:
 					t.Text,
 					inter.keywords.variables,
 					util.LevensteinDistance,
-					4,
+					min(len(t.Text), 4),
 				)
 				suggestionTxt := ""
 				if ok {
@@ -544,65 +549,31 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			prevType = tokens[len(tokens)-1].Type
 		}
 
-		if trimmedWord == "help" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_HELP})
-		} else if trimmedWord == "exit" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_EXIT})
-		} else if trimmedWord == "env" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_ENV})
-		} else if trimmedWord == "clear" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_CLEAR})
-		} else if trimmedWord == "let" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_LET})
-		} else if trimmedWord == "del" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_DEL})
-		} else if trimmedWord == "print" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_PRINT})
-		} else if trimmedWord == "len" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_LEN})
-		} else if trimmedWord == "slice" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_SLICE})
-		} else if trimmedWord == "rematch" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_REMATCH})
-		} else if trimmedWord == "repattern" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_REPATTERN})
-		} else if trimmedWord == "tokenize" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_TOKENIZE})
-		} else if trimmedWord == "parse" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_PARSE})
-		} else if l := len("optimize_"); len(trimmedWord) > l && trimmedWord[:l] == "optimize_" {
-			tokens = append(tokens, IToken{ITOK_CMD_LVL_OPTIMIZE, trimmedWord[l:]})
-		} else if l := len("env_"); len(trimmedWord) > l && trimmedWord[:l] == "env_" {
-			tokens = append(tokens, IToken{ITOK_CMD_ENV, trimmedWord[l:]})
-		} else if l := len("opt_"); len(trimmedWord) > l && trimmedWord[:l] == "opt_" {
-			tokens = append(tokens, IToken{ITOK_CMD_OPTIMIZE, trimmedWord[l:]})
-		} else if trimmedWord == "compile" {
-			tokens = append(tokens, IToken{Type: ITOK_CMD_COMPILE})
-		} else if unicode.IsDigit(rune(trimmedWord[0])) {
-			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
-		} else if prevType == ITOK_CMD_LET || prevType == ITOK_CMD_DEL || prevType == ITOK_CMD_PRINT {
+		tokType, ok := commands[trimmedWord]
+		if ok {
+			tokens = append(tokens, IToken{Type: tokType})
+		} else if len(trimmedWord) > 0 && trimmedWord[0] == '`' {
+			_, strLiteral, _ := strings.Cut(word, "`")
+			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
+		} else if prevType == ITOK_CMD_LET || prevType == ITOK_CMD_DEL ||
+			prevType == ITOK_CMD_ENV || prevType == ITOK_CMD_OPTIMIZE {
 			tokens = append(tokens, IToken{ITOK_VAL_STR, trimmedWord})
-		} else if prevType == ITOK_CMD_LEN || prevType == ITOK_CMD_SLICE {
-			if trimmedWord[0] == '`' {
-				_, strLiteral, _ := strings.Cut(word, "`")
-				tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
-			} else {
-				tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-			}
+		} else if prevType == ITOK_CMD_LEN || prevType == ITOK_CMD_SLICE ||
+			prevType == ITOK_CMD_PRINT {
+			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_REMATCH || prevType == ITOK_CMD_TOKENIZE {
-			if trimmedWord[0] == '`' {
-				_, strLiteral, _ := strings.Cut(word, "`")
-				tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
-			} else {
-				tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-			}
+			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_OPTIMIZE || prevType == ITOK_CMD_LVL_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_LET && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
 			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
+		} else if tokens[0].Type == ITOK_CMD_PRINT && prevType == ITOK_VAR_NAME {
+			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type != ITOK_CMD_LET {
 			tokens[len(tokens)-1].Text += " " + word
+		} else if len(trimmedWord) > 0 && (unicode.IsDigit(rune(trimmedWord[0])) || trimmedWord[0] == '-') {
+			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
 		} else {
 			tokens = append(tokens, IToken{ITOK_INVALID, trimmedWord})
 		}
@@ -615,8 +586,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Shitty debug shell for atlas")
 	fmt.Fprintln(w, "help                                  - print this help")
 	fmt.Fprintln(w, "exit                                  - exit interactive mode")
-	fmt.Fprintln(w, "env                                   - print info about environment")
-	fmt.Fprintln(w, "    env_<name>                        - print about specific variable <name>")
+	fmt.Fprintln(w, "env (string)                          - print info about environment")
 	fmt.Fprintln(w, "clear                                 - clear the screen")
 	fmt.Fprintln(w, "let name (string|tokens|clause)       - save value to a variable")
 	fmt.Fprintln(w, "del [name]                            - delete a variable or all variables")
@@ -628,8 +598,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "tokenize (string|name)                - tokenize a string")
 	fmt.Fprintln(w, "        ex. tokenize `author:me")
 	fmt.Fprintln(w, "parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Fprintln(w, "optimize_<level> (clause|name)        - optimize clause tree to <level>")
-	fmt.Fprintln(w, "opt_<subcommand> (clause|name)        - apply specific optimization to clause tree")
+	fmt.Fprintln(w, "optimize <level> (clause|name)        - optimize clause tree to <level>")
+	fmt.Fprintln(w, "opt <subcommand> (clause|name)        - apply specific optimization to clause tree")
 	fmt.Fprintln(w, "    sort                              - sort statements")
 	fmt.Fprintln(w, "    flatten                           - flatten clauses")
 	fmt.Fprintln(w, "    compact                           - compact equivalent statements")
@@ -639,10 +609,4 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
 	fmt.Fprintln(w, "compile (clause|name)                 - compile clause into query")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")
-}
-
-func init() {
-	for _, opt := range optimizations {
-		commands = append(commands, "opt_"+opt)
-	}
 }
