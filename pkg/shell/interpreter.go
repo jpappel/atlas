@@ -41,8 +41,12 @@ const (
 	// values
 	ITOK_VAL_INT
 	ITOK_VAL_STR
-	ITOK_VAL_TOKENS
-	ITOK_VAL_CLAUSE
+
+	// arithmetic
+	ITOK_ARI_ADD
+	ITOK_ARI_SUB
+	ITOK_ARI_MUL
+	ITOK_ARI_IDIV // integer division
 
 	// commands
 	ITOK_CMD_HELP
@@ -98,6 +102,10 @@ var commands = map[string]ITokType{
 	"parse":     ITOK_CMD_PARSE,
 	"env":       ITOK_CMD_ENV,
 	"compile":   ITOK_CMD_COMPILE,
+	"+":         ITOK_ARI_ADD,
+	"-":         ITOK_ARI_SUB,
+	"*":         ITOK_ARI_MUL,
+	"/":        ITOK_ARI_IDIV,
 }
 
 func NewInterpreter(initialState State, env map[string]string, workers uint) *Interpreter {
@@ -114,6 +122,20 @@ func NewInterpreter(initialState State, env map[string]string, workers uint) *In
 
 func (inter *Interpreter) Reset() {
 	inter.State = make(State)
+}
+
+func evalArith(f func(int, int) int, arg1, arg2 Value, stack *[]Value) (bool, error) {
+	if arg1.Type != VAL_INT || arg2.Type != VAL_INT {
+		return false, fmt.Errorf("Can only perform integer addition")
+	} else if a1, ok1 := arg1.Val.(int); !ok1 {
+		return true, fmt.Errorf("Type corruption, expected int")
+	} else if a2, ok2 := arg2.Val.(int); !ok2 {
+		return true, fmt.Errorf("Type corruption, expected int")
+	} else {
+		*stack = append(*stack, Value{VAL_INT, f(a1, a2)})
+	}
+
+	return false, nil
 }
 
 func (inter *Interpreter) Eval(w io.Writer, tokens []IToken) (bool, error) {
@@ -179,6 +201,58 @@ out:
 				}
 			}
 			break out
+		case ITOK_ARI_ADD:
+			if top < 1 {
+				return false, fmt.Errorf("Expected 2 args for let, recieved %d", len(stack))
+			}
+
+			arg1 := stack[top]
+			arg2 := stack[top-1]
+			stack = stack[:top-1]
+
+			fatal, err := evalArith(func(i1, i2 int) int { return i1 + i2 }, arg1, arg2, &stack)
+			if err != nil {
+				return fatal, err
+			}
+		case ITOK_ARI_SUB:
+			if top < 1 {
+				return false, fmt.Errorf("Expected 2 args for let, recieved %d", len(stack))
+			}
+
+			arg1 := stack[top]
+			arg2 := stack[top-1]
+			stack = stack[:top-1]
+
+			fatal, err := evalArith(func(i1, i2 int) int { return i1 - i2 }, arg1, arg2, &stack)
+			if err != nil {
+				return fatal, err
+			}
+		case ITOK_ARI_MUL:
+			if top < 1 {
+				return false, fmt.Errorf("Expected 2 args for let, recieved %d", len(stack))
+			}
+
+			arg1 := stack[top]
+			arg2 := stack[top-1]
+			stack = stack[:top-1]
+
+			fatal, err := evalArith(func(i1, i2 int) int { return i1 * i2 }, arg1, arg2, &stack)
+			if err != nil {
+				return fatal, err
+			}
+		case ITOK_ARI_IDIV:
+			if top < 1 {
+				return false, fmt.Errorf("Expected 2 args for let, recieved %d", len(stack))
+			}
+
+			arg1 := stack[top]
+			arg2 := stack[top-1]
+			stack = stack[:top-1]
+
+			fatal, err := evalArith(func(i1, i2 int) int { return i1 / i2 }, arg1, arg2, &stack)
+			if err != nil {
+				return fatal, err
+			}
 		case ITOK_CMD_LET:
 			if top < 1 {
 				return false, fmt.Errorf("Expected 2 args for let, recieved %d", len(stack))
@@ -673,4 +747,5 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
 	fmt.Fprintln(w, "compile (clause|name)                 - compile clause into query")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")
+	fmt.Fprintln(w, "Basic integer arrithmetic (+ - * /) is supported in polish notation")
 }
