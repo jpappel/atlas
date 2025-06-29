@@ -53,6 +53,7 @@ const (
 	ITOK_CMD_DEL
 	ITOK_CMD_PRINT
 	ITOK_CMD_LEN
+	ITOK_CMD_AT
 	ITOK_CMD_SLICE
 	ITOK_CMD_REMATCH
 	ITOK_CMD_REPATTERN
@@ -87,6 +88,7 @@ var commands = map[string]ITokType{
 	"del":       ITOK_CMD_DEL,
 	"print":     ITOK_CMD_PRINT,
 	"len":       ITOK_CMD_LEN,
+	"at":        ITOK_CMD_AT,
 	"slice":     ITOK_CMD_SLICE,
 	"rematch":   ITOK_CMD_REMATCH,
 	"repattern": ITOK_CMD_REPATTERN,
@@ -456,11 +458,68 @@ out:
 					return true, fmt.Errorf("Type corruption during len, expected []query.Token")
 				}
 				length = len(toks)
+			case VAL_CLAUSE:
+				clause, ok := arg.Val.(*query.Clause)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during len, expected *query.Clause")
+				}
+				length = clause.Order()
 			default:
 				return false, fmt.Errorf("Unable to get length of argument with type %s", arg.Type)
 			}
 
 			stack = append(stack, Value{VAL_INT, length})
+		case ITOK_CMD_AT:
+			if top < 1 {
+				return false, fmt.Errorf("Expected 2 arguments for at, got %d", len(stack))
+			}
+			idxVal := stack[top]
+			arg := stack[top-1]
+			stack = stack[:top-1]
+
+			var idx int
+			if idxVal.Type != VAL_INT {
+				return false, fmt.Errorf("Cannot get value at non-integer index")
+			} else if idx, ok = idxVal.Val.(int); !ok {
+				return true, fmt.Errorf("Type corruption during at, expected int")
+			}
+
+			switch arg.Type {
+			case VAL_STRING:
+				if s, ok := arg.Val.(string); !ok {
+					return true, fmt.Errorf("Type corruption during at, expected string")
+				} else if idx < 0 || idx >= len(s) {
+					return false, fmt.Errorf("Index out of bounds")
+				} else {
+					stack = append(stack, Value{VAL_STRING, s[idx]})
+				}
+			case VAL_TOKENS:
+				if toks, ok := arg.Val.([]query.Token); !ok {
+					return true, fmt.Errorf("Type corruption during at, expected []query.Token")
+				} else if idx < 0 || idx >= len(toks) {
+					return false, fmt.Errorf("Index out of bounds")
+				} else {
+					stack = append(stack, Value{VAL_TOKENS, []query.Token{toks[idx]}})
+				}
+			case VAL_CLAUSE:
+				if clause, ok := arg.Val.(*query.Clause); !ok {
+					return true, fmt.Errorf("Type corruption during at, expected *query.Clause")
+				} else if idx < 0 || idx >= clause.Order() {
+					return false, fmt.Errorf("Index out of bounds")
+				} else {
+					pos := 0
+					for c := range clause.DFS() {
+						if pos == idx {
+							stack = append(stack, Value{VAL_CLAUSE, c})
+							break
+						}
+						pos++
+					}
+				}
+			default:
+				return false, fmt.Errorf("Cannot index type %s", arg.Type)
+			}
+
 		case ITOK_CMD_SLICE:
 			if top < 2 {
 				return false, fmt.Errorf("Expected 3 arguments for slice, got %d", len(stack))
@@ -563,15 +622,19 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_REMATCH || prevType == ITOK_CMD_TOKENIZE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_OPTIMIZE || prevType == ITOK_CMD_LVL_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
+		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_LVL_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_LET && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
 			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
 		} else if tokens[0].Type == ITOK_CMD_PRINT && prevType == ITOK_VAR_NAME {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
+		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_OPTIMIZE {
+			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type != ITOK_CMD_LET {
 			tokens[len(tokens)-1].Text += " " + word
+		} else if prevType == ITOK_VAL_INT && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_AT {
+			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if len(trimmedWord) > 0 && (unicode.IsDigit(rune(trimmedWord[0])) || trimmedWord[0] == '-') {
 			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
 		} else {
@@ -591,15 +654,16 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "let name (string|tokens|clause)       - save value to a variable")
 	fmt.Fprintln(w, "del [name]                            - delete a variable or all variables")
 	fmt.Fprintln(w, "print [name]                          - print a variable or all variables")
-	fmt.Fprintln(w, "slice (string|tokens|name) start stop - slice a string or tokens from start to stop")
-	fmt.Fprintln(w, "len (string|tokens|name)              - length of a string or token slice")
-	fmt.Fprintln(w, "rematch (string|name)                 - match against regex for querylang spec")
+	fmt.Fprintln(w, "slice (string|tokens) start stop      - slice a string or tokens from start to stop")
+	fmt.Fprintln(w, "len (string|tokens|clause)            - number of elements which comprise argument")
+	fmt.Fprintln(w, "at index (string|tokens|clause)       - element at index, for clauses uses depth-first ordering")
+	fmt.Fprintln(w, "rematch (string)                      - match against regex for querylang spec")
 	fmt.Fprintln(w, "repattern                             - print regex for querylang")
-	fmt.Fprintln(w, "tokenize (string|name)                - tokenize a string")
+	fmt.Fprintln(w, "tokenize (string)                     - tokenize a string")
 	fmt.Fprintln(w, "        ex. tokenize `author:me")
-	fmt.Fprintln(w, "parse (tokens|name)                   - parse tokens into a clause")
-	fmt.Fprintln(w, "optimize <level> (clause|name)        - optimize clause tree to <level>")
-	fmt.Fprintln(w, "opt <subcommand> (clause|name)        - apply specific optimization to clause tree")
+	fmt.Fprintln(w, "parse (tokens)                        - parse tokens into a clause")
+	fmt.Fprintln(w, "optimize <level> (clause)             - optimize clause tree to <level>")
+	fmt.Fprintln(w, "opt <subcommand> (clause)             - apply specific optimization to clause tree")
 	fmt.Fprintln(w, "    sort                              - sort statements")
 	fmt.Fprintln(w, "    flatten                           - flatten clauses")
 	fmt.Fprintln(w, "    compact                           - compact equivalent statements")
