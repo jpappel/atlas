@@ -18,7 +18,7 @@ type QueryFlags struct {
 
 func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags) {
 	// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
-	fs.Func("outFormat", "output `format` for queries (default, json, custom)",
+	fs.Func("outFormat", "output `format` for queries (default, json, pathonly, custom)",
 		func(arg string) error {
 			switch arg {
 			case "default":
@@ -26,6 +26,9 @@ func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags) {
 				return nil
 			case "json":
 				flags.Outputer = query.JsonOutput{}
+				return nil
+			case "pathonly":
+				flags.Outputer, _ = query.NewCustomOutput("%p", dateFormat)
 				return nil
 			case "custom":
 				var err error

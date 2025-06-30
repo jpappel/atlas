@@ -41,6 +41,8 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 		}
 		var catStr string
 		switch cat {
+		case CAT_PATH:
+			catStr = "path "
 		case CAT_AUTHOR:
 			catStr = "author "
 		case CAT_DATE:

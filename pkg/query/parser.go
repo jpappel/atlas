@@ -15,6 +15,7 @@ type catType int
 
 const (
 	CAT_UNKNOWN catType = iota
+	CAT_PATH
 	CAT_TITLE
 	CAT_AUTHOR
 	CAT_DATE
@@ -144,6 +145,8 @@ func (t catType) IsOrdered() bool {
 
 func (t catType) String() string {
 	switch t {
+	case CAT_PATH:
+		return "path"
 	case CAT_TITLE:
 		return "title"
 	case CAT_AUTHOR:
@@ -199,6 +202,8 @@ func (t opType) String() string {
 // convert a token to a category
 func tokToCat(t queryTokenType) catType {
 	switch t {
+	case TOK_CAT_PATH:
+		return CAT_PATH
 	case TOK_CAT_TITLE:
 		return CAT_TITLE
 	case TOK_CAT_AUTHOR:
@@ -497,7 +502,7 @@ func Parse(tokens []Token) (*Clause, error) {
 
 			stmt := Statement{Negated: true}
 			clause.Statements = append(clause.Statements, stmt)
-		case TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META:
+		case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META:
 			if !prevToken.Type.Any(TOK_CLAUSE_OR, TOK_CLAUSE_AND, TOK_VAL_STR, TOK_VAL_DATETIME, TOK_OP_NEG, TOK_CLAUSE_END) {
 				return nil, &TokenError{
 					got:      token,
