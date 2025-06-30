@@ -99,7 +99,8 @@ func (f *Fill) document(ctx context.Context) error {
 // pass nil rows to get all documents in the database.
 func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 	if rows == nil {
-		rows, err := f.Db.QueryContext(ctx, `
+		var err error
+		rows, err = f.Db.QueryContext(ctx, `
 	SELECT id, path, title, date, fileTime, meta
 	FROM Documents
 	`)
