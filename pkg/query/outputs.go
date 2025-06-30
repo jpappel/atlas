@@ -8,7 +8,6 @@ import (
 	"github.com/jpappel/atlas/pkg/index"
 )
 
-
 const DefaultOutputFormat string = "%p %T %d authors:%a tags:%t"
 
 type OutputToken uint64

@@ -72,7 +72,6 @@ const (
 
 // TODO: rename
 type Valuer interface {
-	// TODO: define
 	Type() valuerType
 	Compare(Valuer) int
 	buildCompile(*strings.Builder) (string, bool)

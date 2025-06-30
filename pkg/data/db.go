@@ -3,9 +3,11 @@ package data
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"github.com/jpappel/atlas/pkg/index"
+	"github.com/jpappel/atlas/pkg/query"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -202,6 +204,29 @@ func createSchema(db *sql.DB) error {
 		return err
 	}
 
+	_, err = tx.Exec(`
+	CREATE VIEW IF NOT EXISTS Search AS
+	SELECT
+		d.id AS docId,
+		d.path,
+		d.title,
+		d.date,
+		d.fileTime,
+		d.meta,
+		COALESCE(a.name, al.alias) AS author,
+		t.name AS tag
+	FROM Documents d
+	LEFT JOIN DocumentAuthors da ON d.id = da.docId
+	LEFT JOIN Authors a ON da.authorId = a.id
+	LEFT JOIN Aliases al ON a.id = al.authorId
+	LEFT JOIN DocumentTags dt ON d.id = dt.docId
+	LEFT JOIN Tags t ON dt.tagId = t.id
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
 	return nil
 }
 
@@ -253,4 +278,41 @@ func (q Query) GetDocument(path string) (*index.Document, error) {
 	ctx := context.TODO()
 	f := Fill{Path: path, Db: q.db}
 	return f.Get(ctx)
+}
+
+func (q Query) Execute(artifact query.CompilationArtifact) (map[string]*index.Document, error) {
+	ctx := context.TODO()
+	f := FillMany{
+		Db:   q.db,
+		docs: make(map[string]*index.Document),
+		ids:  make(map[string]int),
+	}
+
+	compiledQuery := fmt.Sprintf(`
+	SELECT DISTINCT docId, path, title, date, fileTime, meta
+	FROM Search
+	WHERE %s`, artifact.Query)
+
+	rows, err := q.db.QueryContext(ctx, compiledQuery, artifact.Args...)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := f.documents(ctx, rows); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	if err := f.tags(ctx); err != nil {
+		return nil, err
+	}
+	if err := f.links(ctx); err != nil {
+		return nil, err
+	}
+	if err := f.authors(ctx); err != nil {
+		return nil, err
+	}
+
+	return f.docs, nil
 }

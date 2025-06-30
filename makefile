@@ -7,7 +7,7 @@ INSTALL_PATH := ~/.local/bin
 all: $(BINS)
 
 atlas: $(SRC)
-	go build -o $@ ./cmd/atlas.go
+	go build -o $@ $(wildcard ./cmd/*.go)
 
 test:
 	go test ./...

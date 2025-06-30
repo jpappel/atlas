@@ -22,9 +22,9 @@ type Fill struct {
 //
 // Use to build documents and aliases from a database connection
 type FillMany struct {
-	docs    map[string]*index.Document
-	ids     map[string]int
-	Db      *sql.DB
+	docs map[string]*index.Document
+	ids  map[string]int
+	Db   *sql.DB
 }
 
 func (f Fill) Get(ctx context.Context) (*index.Document, error) {
@@ -49,7 +49,7 @@ func (f FillMany) Get(ctx context.Context) (map[string]*index.Document, error) {
 	f.docs = make(map[string]*index.Document)
 	f.ids = make(map[string]int)
 
-	if err := f.documents(ctx); err != nil {
+	if err := f.documents(ctx, nil); err != nil {
 		return nil, err
 	}
 	if err := f.tags(ctx); err != nil {
@@ -95,15 +95,19 @@ func (f *Fill) document(ctx context.Context) error {
 	return nil
 }
 
-func (f *FillMany) documents(ctx context.Context) error {
-	rows, err := f.Db.QueryContext(ctx, `
+// Fill document info for documents provided by rows (id, path, title, date, fileTime, meta)
+// pass nil rows to get all documents in the database.
+func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
+	if rows == nil {
+		rows, err := f.Db.QueryContext(ctx, `
 	SELECT id, path, title, date, fileTime, meta
 	FROM Documents
 	`)
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
 	}
-	defer rows.Close()
 
 	var id int
 	var docPath string
@@ -138,7 +142,6 @@ func (f *FillMany) documents(ctx context.Context) error {
 
 	return nil
 }
-
 func (f Fill) authors(ctx context.Context) error {
 	rows, err := f.Db.QueryContext(ctx, `
 	SELECT name

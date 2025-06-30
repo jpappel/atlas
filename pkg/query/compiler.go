@@ -11,7 +11,7 @@ const MAX_CLAUSE_DEPTH int = 16
 
 type CompilationArtifact struct {
 	Query string
-	Args  []string
+	Args  []any
 }
 
 func (art CompilationArtifact) String() string {
@@ -29,8 +29,8 @@ func (art CompilationArtifact) String() string {
 	return b.String()
 }
 
-func (s Statements) buildCompile(b *strings.Builder, delim string) ([]string, error) {
-	var args []string
+func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error) {
+	var args []any
 
 	sCount := 0
 	for cat, catStmts := range s.CategoryPartition() {
@@ -124,6 +124,23 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]string, er
 					idx++
 				}
 				b.WriteString(") ")
+			} else if cat.IsSet() && op == OP_AP {
+				b.WriteString("( ")
+				idx := 0
+				for _, stmt := range opStmts {
+					b.WriteString(catStr)
+					b.WriteString(opStr)
+					arg, ok := stmt.Value.buildCompile(b)
+					if ok {
+						args = append(args, "%"+arg+"%")
+					}
+					if idx != len(opStmts)-1 {
+						b.WriteString(" OR ")
+					}
+					sCount++
+					idx++
+				}
+				b.WriteString(" ) ")
 			} else if cat.IsOrdered() && op == OP_AP {
 				idx := 0
 				for _, stmt := range opStmts {
@@ -135,7 +152,9 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]string, er
 
 					start, end := util.FuzzDatetime(d.D)
 
-					b.WriteString("NOT ")
+					if stmt.Negated {
+						b.WriteString("NOT ")
+					}
 					b.WriteString(opStr)
 					fmt.Fprint(b, start.Unix(), " ")
 					b.WriteString("AND ")
@@ -194,12 +213,17 @@ func (root Clause) Compile() (CompilationArtifact, error) {
 	args, err := root.buildCompile(&b)
 	if err != nil {
 		return CompilationArtifact{}, err
+	} else if b.Len() == 0 {
+		return CompilationArtifact{}, fmt.Errorf("Empty query")
 	}
 	return CompilationArtifact{b.String(), args}, nil
 }
 
-func (c Clause) buildCompile(b *strings.Builder) ([]string, error) {
-	b.WriteString("( ")
+func (c Clause) buildCompile(b *strings.Builder) ([]any, error) {
+	isRoot := b.Len() == 0
+	if !isRoot {
+		b.WriteString("( ")
+	}
 
 	var delim string
 	switch c.Operator {
@@ -226,7 +250,10 @@ func (c Clause) buildCompile(b *strings.Builder) ([]string, error) {
 			args = append(args, newArgs...)
 		}
 	}
-	b.WriteString(") ")
+
+	if !isRoot {
+		b.WriteString(") ")
+	}
 
 	return args, nil
 }

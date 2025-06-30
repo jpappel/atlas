@@ -1,8 +1,6 @@
 package query
 
 import (
-	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -458,11 +456,9 @@ func (o *Optimizer) Tighten() {
 						for j, s2 := range util.FilterIter(stmts[i+1:], func(s Statement) bool { return s.Operator == OP_AP }) {
 							val2 := strings.ToLower(s2.Value.(StringValue).S)
 							if strings.Contains(val2, val1) {
-								fmt.Fprintf(os.Stderr, "%s > %s\nRemoving %s\n", val2, val1, val2)
 								// NOTE: slicing stmts offsets the all indices by 1, hence the correction
 								removals[j+1] = true
 							} else if strings.Contains(val1, val2) {
-								fmt.Fprintf(os.Stderr, "%s > %s\nRemoving %s\n", val1, val2, val1)
 								removals[i] = true
 							}
 						}

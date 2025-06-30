@@ -366,7 +366,6 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) map[string]*Docu
 			for path := range jobs {
 				doc, err := ParseDoc(path, opts)
 				if err != nil {
-					// TODO: propagate error
 					slog.Error("Error occured while parsing file",
 						slog.String("path", path), slog.String("err", err.Error()),
 					)

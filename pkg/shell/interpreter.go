@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/query"
 	"github.com/jpappel/atlas/pkg/util"
 	"golang.org/x/term"
@@ -29,6 +30,7 @@ type Interpreter struct {
 	env      map[string]string
 	term     *term.Terminal
 	keywords keywords
+	querier  *data.Query
 }
 
 type ITokType int
@@ -66,6 +68,7 @@ const (
 	ITOK_CMD_TOKENIZE
 	ITOK_CMD_PARSE
 	ITOK_CMD_COMPILE
+	ITOK_CMD_EXECUTE
 )
 
 type IToken struct {
@@ -102,13 +105,14 @@ var commands = map[string]ITokType{
 	"parse":     ITOK_CMD_PARSE,
 	"env":       ITOK_CMD_ENV,
 	"compile":   ITOK_CMD_COMPILE,
+	"execute":   ITOK_CMD_EXECUTE,
 	"+":         ITOK_ARI_ADD,
 	"-":         ITOK_ARI_SUB,
 	"*":         ITOK_ARI_MUL,
-	"/":        ITOK_ARI_IDIV,
+	"/":         ITOK_ARI_IDIV,
 }
 
-func NewInterpreter(initialState State, env map[string]string, workers uint) *Interpreter {
+func NewInterpreter(initialState State, env map[string]string, workers uint, querier *data.Query) *Interpreter {
 	return &Interpreter{
 		State: initialState,
 		env:   env,
@@ -116,6 +120,7 @@ func NewInterpreter(initialState State, env map[string]string, workers uint) *In
 			commands:      slices.Collect(maps.Keys(commands)),
 			optimizations: optimizations,
 		},
+		querier: querier,
 		Workers: workers,
 	}
 }
@@ -147,7 +152,7 @@ func (inter *Interpreter) Eval(w io.Writer, tokens []IToken) (bool, error) {
 		return token.Type == ITOK_INVALID
 	}) {
 		b := &strings.Builder{}
-		b.WriteString("Unexpected token(s)\n")
+		b.WriteString("Unknown command, variable, or constant\n")
 		for _, t := range tokens {
 			if t.Type == ITOK_INVALID {
 				b.WriteString(t.Text)
@@ -487,6 +492,31 @@ out:
 			}
 
 			stack = append(stack, Value{VAL_ARTIFACT, artifact})
+		case ITOK_CMD_EXECUTE:
+			if top < 0 {
+				return false, fmt.Errorf("No argument to execute")
+			}
+			arg := stack[top]
+			stack = stack[:top]
+			if arg.Type != VAL_ARTIFACT {
+				return false, fmt.Errorf("Unable to excute non-artifact argument of type %s", arg.Type)
+			}
+
+			artifact, ok := arg.Val.(query.CompilationArtifact)
+			if !ok {
+				return true, errors.New("Type corruption during compilation, expected query.CompilationArtifact")
+			}
+
+			results, err := inter.querier.Execute(artifact)
+			if err != nil {
+				return false, fmt.Errorf("Error occured while excuting query: %s", err)
+			}
+
+			s, err := query.DefaultOutput{}.Output(slices.Collect(maps.Values(results)))
+			if err != nil {
+				return false, fmt.Errorf("Can't output results: %s", err)
+			}
+			fmt.Fprintln(w, s)
 		case ITOK_VAR_NAME:
 			val, ok := inter.State[t.Text]
 			if !ok {
@@ -696,18 +726,20 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_CMD_REMATCH || prevType == ITOK_CMD_TOKENIZE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
-		} else if prevType == ITOK_CMD_PARSE || prevType == ITOK_CMD_LVL_OPTIMIZE || prevType == ITOK_CMD_COMPILE {
+		} else if prevType == ITOK_CMD_PARSE ||
+			prevType == ITOK_CMD_COMPILE || prevType == ITOK_CMD_EXECUTE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_LET && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
 			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
-		} else if tokens[0].Type == ITOK_CMD_PRINT && prevType == ITOK_VAR_NAME {
+		} else if len(tokens) > 0 && tokens[0].Type == ITOK_CMD_PRINT && prevType == ITOK_VAR_NAME {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_OPTIMIZE {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if prevType == ITOK_VAL_STR && len(tokens) > 1 && tokens[len(tokens)-2].Type != ITOK_CMD_LET {
 			tokens[len(tokens)-1].Text += " " + word
-		} else if prevType == ITOK_VAL_INT && len(tokens) > 1 && tokens[len(tokens)-2].Type == ITOK_CMD_AT {
+		} else if prevType == ITOK_VAL_INT && len(tokens) > 1 &&
+			(tokens[len(tokens)-2].Type == ITOK_CMD_AT || tokens[len(tokens)-2].Type == ITOK_CMD_LVL_OPTIMIZE) {
 			tokens = append(tokens, IToken{ITOK_VAR_NAME, trimmedWord})
 		} else if len(trimmedWord) > 0 && (unicode.IsDigit(rune(trimmedWord[0])) || trimmedWord[0] == '-') {
 			tokens = append(tokens, IToken{ITOK_VAL_INT, trimmedWord})
@@ -745,7 +777,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "    contradictions                    - zero contradicting statements and clauses")
 	fmt.Fprintln(w, "    strictEq                          - zero fuzzy/range statements when an eq is present")
 	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
-	fmt.Fprintln(w, "compile (clause|name)                 - compile clause into query")
+	fmt.Fprintln(w, "compile (clause)                      - compile clause into query")
+	fmt.Fprintln(w, "execute (artifact)                    - excute the compiled query against the connected database")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")
 	fmt.Fprintln(w, "Basic integer arrithmetic (+ - * /) is supported in polish notation")
 }

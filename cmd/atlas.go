@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,11 +14,11 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/jpappel/atlas/pkg/data"
-	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
 	"github.com/jpappel/atlas/pkg/shell"
 )
 
+const VERSION = "0.0.1"
 const ExitCommand = 2           // exit because of a command parsing error
 const dateFormat = time.RFC3339 // TODO: make a flag
 
@@ -81,15 +80,8 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	queryFlags := struct {
-		Output            query.Outputer
-		CustomFormat      string
-		OptimizationLevel int
-	}{}
-	indexFlags := struct {
-		Filters []index.DocFilter
-		index.ParseOpts
-	}{}
+	queryFlags := QueryFlags{Outputer: query.DefaultOutput{}}
+	indexFlags := IndexFlags{}
 
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "No Command provided")
@@ -101,54 +93,10 @@ func main() {
 	command := args[0]
 
 	switch command {
-	case "query":
-		// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
-		queryFs.Func("outFormat", "output `format` for queries (default, json, custom)",
-			func(arg string) error {
-				switch arg {
-				case "default":
-					queryFlags.Output = query.DefaultOutput{}
-					return nil
-				case "json":
-					queryFlags.Output = query.JsonOutput{}
-					return nil
-				case "custom":
-					var err error
-					queryFlags.Output, err = query.NewCustomOutput(queryFlags.CustomFormat, dateFormat)
-					return err
-				}
-				return fmt.Errorf("Unrecognized output format: %s", arg)
-			})
-		queryFs.StringVar(&queryFlags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "format string for --outFormat custom, see EXAMPLES for more details")
-		queryFs.IntVar(&queryFlags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
-
-		queryFs.Parse(args[1:])
+	case "query", "q":
+		setupQueryFlags(args, queryFs, &queryFlags)
 	case "index":
-		indexFs.BoolVar(&indexFlags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
-		indexFs.BoolVar(&indexFlags.IgnoreMetaError, "ignoreMetaError", false, "ignore errors while parsing general YAML header info")
-		indexFs.BoolVar(&indexFlags.ParseMeta, "parseMeta", true, "parse YAML header values other title, authors, date, tags")
-
-		customFilters := false
-		indexFlags.Filters = index.DefaultFilters()
-		indexFs.Func("filter",
-			"accept or reject files from indexing, applied in supplied order"+
-				"\n(default Ext_.md, MaxSize_204800, YAMLHeader, ExcludeParent_templates)\n"+
-				index.FilterHelp,
-			func(s string) error {
-				if !customFilters {
-					indexFlags.Filters = indexFlags.Filters[:0]
-				}
-
-				filter, err := index.ParseFilter(s)
-				if err != nil {
-					return err
-				}
-				indexFlags.Filters = append(indexFlags.Filters, filter)
-
-				return nil
-			})
-
-		indexFs.Parse(args[1:])
+		setupIndexFlags(args, indexFs, &indexFlags)
 	case "help":
 		printHelp()
 		flag.PrintDefaults()
@@ -186,68 +134,15 @@ func main() {
 	slog.SetDefault(logger)
 
 	querier := data.NewQuery(globalFlags.DBPath)
-	defer querier.Close()
-
-	go func() {
-		if r := recover(); r != nil {
-			os.Exit(1)
-		}
-	}()
 
 	// command specific
+	var exitCode int
 	switch command {
-	case "query":
+	case "query", "q":
 		searchQuery := strings.Join(queryFs.Args(), " ")
-		tokens := query.Lex(searchQuery)
-		clause, err := query.Parse(tokens)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Failed to parse query: ", err)
-			panic(err)
-		}
-
-		if queryFlags.OptimizationLevel >= 0 {
-			o := query.NewOptimizer(clause, globalFlags.NumWorkers)
-			o.Optimize(queryFlags.OptimizationLevel)
-		}
-
-		artifact, err := clause.Compile()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println("query\n", artifact.Query)
-		fmt.Println("args\n", strings.Join(artifact.Args, ", "))
-		// TODO: evaluate query
-		// s, err := queryFlags.Output.Output(nil)
-		// if err != nil {
-		// 	slog.Error("Error while outputing query results", slog.String("err", err.Error()))
-		// 	return
-		// }
-		// fmt.Print(s)
+		exitCode = int(runQuery(globalFlags, queryFlags, querier, searchQuery))
 	case "index":
-		idx := index.Index{Root: globalFlags.IndexRoot, Filters: indexFlags.Filters}
-		if logger.Enabled(context.Background(), slog.LevelDebug) {
-			filterNames := make([]string, 0, len(indexFlags.Filters))
-			for _, filter := range indexFlags.Filters {
-				filterNames = append(filterNames, filter.Name)
-			}
-			logger.Debug("index",
-				slog.String("indexRoot", globalFlags.IndexRoot),
-				slog.String("filters", strings.Join(filterNames, ", ")),
-			)
-		}
-
-		traversedFiles := idx.Traverse(globalFlags.NumWorkers)
-		fmt.Print("Crawled ", len(traversedFiles))
-
-		filteredFiles := idx.Filter(traversedFiles, globalFlags.NumWorkers)
-		fmt.Print(", Filtered ", len(filteredFiles))
-
-		idx.Documents = index.ParseDocs(filteredFiles, globalFlags.NumWorkers, indexFlags.ParseOpts)
-		fmt.Print(", Parsed ", len(idx.Documents), "\n")
-
-		if err := querier.Put(idx); err != nil {
-			panic(err)
-		}
+		exitCode = int(runIndex(globalFlags, indexFlags, querier))
 	case "shell":
 		state := make(shell.State)
 		env := make(map[string]string)
@@ -255,13 +150,15 @@ func main() {
 		env["workers"] = fmt.Sprint(globalFlags.NumWorkers)
 		env["db_path"] = globalFlags.DBPath
 		env["index_root"] = globalFlags.IndexRoot
-		env["version"] = "0.0.1"
+		env["version"] = VERSION
 
-		interpreter := shell.NewInterpreter(state, env, globalFlags.NumWorkers)
+		interpreter := shell.NewInterpreter(state, env, globalFlags.NumWorkers, querier)
 		if err := interpreter.Run(); err != nil && err != io.EOF {
 			slog.Error("Fatal error occured", slog.String("err", err.Error()))
-			panic(err)
+			exitCode = 1
 		}
 	}
 
+	querier.Close()
+	os.Exit(exitCode)
 }

@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// NOTE: in the future it would be interesting lua filters
+// TODO: add support for lua filters
 
 type DocFilter struct {
 	Name   string
