@@ -108,6 +108,8 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 			return err
 		}
 		defer rows.Close()
+	} else {
+		// TODO: check if rows.ColumnTypes() matches expected
 	}
 
 	var id int
@@ -273,11 +275,9 @@ func (f FillMany) tags(ctx context.Context) error {
 
 func (f Fill) links(ctx context.Context) error {
 	rows, err := f.Db.QueryContext(ctx, `
-	SELECT path
-	FROM Documents
-	JOIN Links
-	ON Links.referencedId = Documents.id
-	WHERE Links.refererId = ?
+	SELECT link
+	FROM Links
+	WHERE Links.docId = ?
 	`, f.id)
 	if err != nil {
 		return err
@@ -299,11 +299,9 @@ func (f Fill) links(ctx context.Context) error {
 
 func (f FillMany) links(ctx context.Context) error {
 	stmt, err := f.Db.PrepareContext(ctx, `
-	SELECT path
-	FROM Documents
-	JOIN Links
-	ON Links.referencedId = Documents.id
-	WHERE Links.refererId = ?
+	SELECT link
+	FROM Links
+	WHERE Links.docId = ?
 	`)
 	if err != nil {
 		return err

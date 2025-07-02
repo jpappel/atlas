@@ -1,11 +1,13 @@
 package index
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -17,6 +19,7 @@ import (
 )
 
 var ErrHeaderParse error = errors.New("Unable to parse YAML header")
+var linkRegex *regexp.Regexp
 
 type Document struct {
 	Path      string    `yaml:"-" json:"path"`
@@ -32,6 +35,7 @@ type Document struct {
 
 type ParseOpts struct {
 	ParseMeta       bool
+	ParseLinks      bool
 	IgnoreDateError bool
 	IgnoreMetaError bool
 }
@@ -345,12 +349,31 @@ func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 	if pos < 0 {
 		return nil, fmt.Errorf("Can't find YAML header in %s", path)
 	}
+	header := io.NewSectionReader(f, 0, pos)
 
-	if err := yaml.NewDecoder(io.LimitReader(f, pos)).Decode(doc); err != nil {
+	if err := yaml.NewDecoder(header).Decode(doc); err != nil {
 		return nil, errors.Join(ErrHeaderParse, err)
 	}
 
-	// TODO: read the rest of the file to find links
+	if opts.ParseLinks {
+		var buf bytes.Buffer
+		f.Seek(pos, io.SeekStart)
+		if _, err := io.Copy(&buf, f); err != nil {
+			return nil, err
+		}
+
+		matches := linkRegex.FindAllSubmatch(buf.Bytes(), -1)
+		for _, match := range matches {
+			if len(match) != 2 {
+				panic("Link parsing regex returned unexpected number of matches")
+			}
+			link := string(match[1])
+			if len(link) > 0 && len(strings.TrimSpace(link)) > 0 {
+				doc.Links = append(doc.Links, link)
+			}
+		}
+	}
+
 	return doc, nil
 }
 
@@ -395,4 +418,8 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) map[string]*Docu
 	}
 
 	return docs
+}
+
+func init() {
+	linkRegex = regexp.MustCompile(`\[.*\]\((.*)\)`)
 }

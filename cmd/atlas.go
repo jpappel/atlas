@@ -110,9 +110,11 @@ func main() {
 	}
 
 	slogLevel := &slog.LevelVar{}
+	loggerOpts := &slog.HandlerOptions{Level: slogLevel}
 	switch globalFlags.LogLevel {
 	case "debug":
 		slogLevel.Set(slog.LevelDebug)
+		loggerOpts.AddSource = true
 	case "info":
 		slogLevel.Set(slog.LevelInfo)
 	case "warn":
@@ -123,11 +125,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Unrecognized log level:", globalFlags.LogLevel)
 		os.Exit(ExitCommand)
 	}
-	loggerOpts := &slog.HandlerOptions{Level: slogLevel}
 	var logHandler slog.Handler
 	if globalFlags.LogJson {
 		logHandler = slog.NewJSONHandler(os.Stderr, loggerOpts)
 	} else {
+		// strip time
+		loggerOpts.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey && len(groups) == 0 {
+				return slog.Attr{}
+			}
+			return a
+		}
 		logHandler = slog.NewTextHandler(os.Stderr, loggerOpts)
 	}
 	logger := slog.New(logHandler)

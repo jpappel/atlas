@@ -1,7 +1,6 @@
 package data_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"testing"
@@ -57,6 +56,13 @@ func singleDoc(t *testing.T) *sql.DB {
 		t.Fatal("err inserting docTags:", err)
 	}
 
+	if _, err := db.Exec(`
+	INSERT INTO Links (docId, link)
+	VALUES (1, 'link1'), (1, 'link2')
+	`); err != nil {
+		t.Fatal("err inserting links:", err)
+	}
+
 	return db
 }
 
@@ -106,6 +112,13 @@ func multiDoc(t *testing.T) *sql.DB {
 		t.Fatal("err inserting docTags:", err)
 	}
 
+	if _, err := db.Exec(`
+	INSERT INTO Links (docId, link)
+	VALUES (1, '/home'), (2, 'rsync://rsync.kernel.org/pub/')
+	`); err != nil {
+		t.Fatal("err inserting links:", err)
+	}
+
 	return db
 }
 
@@ -129,6 +142,7 @@ func TestFill_Get(t *testing.T) {
 				FileTime: time.Unix(2, 0),
 				Authors:  []string{"jp"},
 				Tags:     []string{"foo", "bar", "oof", "baz"},
+				Links:    []string{"link1", "link2"},
 			},
 			nil,
 		},
@@ -136,7 +150,7 @@ func TestFill_Get(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.newFill(t)
-			got, gotErr := f.Get(context.Background())
+			got, gotErr := f.Get(t.Context())
 
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Fatalf("Recieved unexpected error: got %v want %v", gotErr, tt.wantErr)
@@ -172,6 +186,7 @@ func TestFillMany_Get(t *testing.T) {
 					FileTime: time.Unix(2, 0),
 					Authors:  []string{"jp"},
 					Tags:     []string{"foo", "baz"},
+					Links:    []string{"/home"},
 				},
 				"README.md": {
 					Path:     "README.md",
@@ -180,6 +195,7 @@ func TestFillMany_Get(t *testing.T) {
 					FileTime: time.Unix(4, 0),
 					Authors:  []string{"anonymous", "jp"},
 					Tags:     []string{"bar", "oof"},
+					Links:    []string{"rsync://rsync.kernel.org/pub/"},
 				},
 			},
 			nil,
@@ -187,7 +203,7 @@ func TestFillMany_Get(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			f := tt.newFillMany(t)
 
 			got, gotErr := f.Get(ctx)

@@ -19,7 +19,7 @@ type Query struct {
 //
 // output is in the form
 //
-// <query> <start><(n-1)*(<val><delim)>><val><delim><stop>
+// <query> <start><(n-1)*(<val><delim)>><val><stop>
 func BatchQuery[T any](query string, start string, val string, delim string, stop string, n int, baseArgs []T) (string, []any) {
 	args := make([]any, len(baseArgs))
 	for i, arg := range baseArgs {
@@ -139,10 +139,10 @@ func createSchema(db *sql.DB) error {
 
 	_, err = tx.Exec(`
 	CREATE TABLE IF NOT EXISTS Links(
-		referencedId INT,
-		refererId INT,
-		FOREIGN KEY (referencedId) REFERENCES Documents(id),
-		FOREIGN KEY (refererId) REFERENCES Documents(id)
+		docId INT,
+		link TEXT NOT NULL,
+		FOREIGN KEY (docId) REFERENCES Documents(id),
+		UNIQUE(docId, link)
 	)`)
 	if err != nil {
 		tx.Rollback()
@@ -198,6 +198,12 @@ func createSchema(db *sql.DB) error {
 		return err
 	}
 
+	_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_links_link ON Links(link)")
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
 	_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_doctags_tagid ON DocumentTags (tagId)")
 	if err != nil {
 		tx.Rollback()
@@ -214,13 +220,15 @@ func createSchema(db *sql.DB) error {
 		d.fileTime,
 		d.meta,
 		COALESCE(a.name, al.alias) AS author,
-		t.name AS tag
+		t.name AS tag,
+		l.link
 	FROM Documents d
 	LEFT JOIN DocumentAuthors da ON d.id = da.docId
 	LEFT JOIN Authors a ON da.authorId = a.id
 	LEFT JOIN Aliases al ON a.id = al.authorId
 	LEFT JOIN DocumentTags dt ON d.id = dt.docId
 	LEFT JOIN Tags t ON dt.tagId = t.id
+	LEFT JOIN Links l ON d.id = l.docId
 	`)
 	if err != nil {
 		tx.Rollback()

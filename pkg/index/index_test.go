@@ -251,6 +251,31 @@ func TestIndex_ParseOne(t *testing.T) {
 			nil,
 		},
 		{
+			"links",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "links")
+				defer f.Close()
+
+				f.WriteString("---\n")
+				f.WriteString("title: Link test\n")
+				f.WriteString("---\n")
+				f.WriteString(`
+				Here are some words in a *markdown* file.
+				In this sentence there is a valid [hyperlink](https://jpappel.xyz).
+				But in this sentence, the [link]() should not get parsed.
+				The same is true for the [link](       	) in this sentence.
+				`)
+
+				return path
+			},
+			index.ParseOpts{ParseLinks: true},
+			&index.Document{
+				Title: "Link test",
+				Links: []string{"https://jpappel.xyz"},
+			},
+			nil,
+		},
+		{
 			"bad tags",
 			func(t *testing.T) string {
 				f, path := newTestFile(t, "badtags")

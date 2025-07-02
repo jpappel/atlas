@@ -21,6 +21,7 @@ func setupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 	fs.BoolVar(&flags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
 	fs.BoolVar(&flags.IgnoreMetaError, "ignoreMetaError", false, "ignore errors while parsing general YAML header info")
 	fs.BoolVar(&flags.ParseMeta, "parseMeta", true, "parse YAML header values other title, authors, date, tags")
+	fs.BoolVar(&flags.ParseLinks, "parseLinks", true, "parse file contents for links")
 
 	customFilters := false
 	flags.Filters = index.DefaultFilters()

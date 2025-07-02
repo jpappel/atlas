@@ -226,14 +226,13 @@ func (p Put) links() error {
 		return nil
 	}
 
-	preQuery := fmt.Sprintf(`
-		INSERT INTO Links (referencedId, refererId)
-			SELECT id, %d
-			FROM Documents
-			WHERE path IN
-	`, p.Id)
-	query, args := BatchQuery(preQuery, "(", "?", ",", ")", len(p.Doc.Links), p.Doc.Links)
-	if _, err := p.tx.Exec(query, args...); err != nil {
+	preQuery := `
+		INSERT INTO Links (docId, link)
+		VALUES
+	`
+	valueStr := fmt.Sprintf("(%d,?)", p.Id)
+	query, args := BatchQuery(preQuery, "", valueStr, ",", "", len(p.Doc.Links), p.Doc.Links)
+	if _, err := p.tx.Exec(query + "\n ON CONFLICT DO NOTHING", args...); err != nil {
 		return err
 	}
 
@@ -251,14 +250,13 @@ func (p PutMany) links(ctx context.Context) error {
 			continue
 		}
 
-		preQuery := fmt.Sprintf(`
-		INSERT INTO Links (referencedId, refererId)
-			SELECT id, %d
-			FROM Documents
-			WHERE path IN
-	`, id)
-		query, args := BatchQuery(preQuery, "(", "?", ",", ")", len(doc.Links), doc.Links)
-		if _, err := tx.Exec(query, args...); err != nil {
+		preQuery := `
+		INSERT INTO Links (docId, link)
+		VALUES
+	`
+		valueStr := fmt.Sprintf("(%d,?)", id)
+		query, args := BatchQuery(preQuery, "", valueStr, ",", "", len(doc.Links), doc.Links)
+		if _, err := tx.Exec(query +"\n ON CONFLICT DO NOTHING", args...); err != nil {
 			tx.Rollback()
 			return err
 		}
