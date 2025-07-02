@@ -3,6 +3,7 @@ package query
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/jpappel/atlas/pkg/index"
@@ -28,7 +29,9 @@ const (
 // TODO: change interface to use byte slices
 type Outputer interface {
 	OutputOne(doc *index.Document) (string, error)
+	OutputOneTo(w io.Writer, doc *index.Document) (int, error)
 	Output(docs []*index.Document) (string, error)
+	OutputTo(w io.Writer, docs []*index.Document) (int, error)
 }
 
 type DefaultOutput struct{}
@@ -53,6 +56,10 @@ func (o DefaultOutput) OutputOne(doc *index.Document) (string, error) {
 	return b.String(), nil
 }
 
+func (o DefaultOutput) OutputOneTo(w io.Writer, doc *index.Document) (int, error) {
+	return o.writeDoc(w, doc)
+}
+
 func (o DefaultOutput) Output(docs []*index.Document) (string, error) {
 	b := strings.Builder{}
 
@@ -66,23 +73,44 @@ func (o DefaultOutput) Output(docs []*index.Document) (string, error) {
 	return b.String(), nil
 }
 
-func (o DefaultOutput) writeDoc(b *strings.Builder, doc *index.Document) bool {
-	if b == nil {
-		return false
+func (o DefaultOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
+	n := 0
+	for _, doc := range docs {
+		nn, err := o.writeDoc(w, doc)
+		if err != nil {
+			return n, err
+		}
+
+		n += nn
 	}
 
-	b.WriteString(doc.Path)
-	b.WriteRune(' ')
-	b.WriteString(doc.Title)
-	b.WriteRune(' ')
-	b.WriteString(doc.Date.String())
-	b.WriteRune(' ')
-	b.WriteString("authors:")
-	b.WriteString(strings.Join(doc.Authors, ","))
-	b.WriteString(" tags:")
-	b.WriteString(strings.Join(doc.Tags, ","))
+	return n, nil
+}
 
-	return true
+func (o DefaultOutput) writeDoc(w io.Writer, doc *index.Document) (int, error) {
+	var n int
+	s := [][]byte{
+		[]byte(doc.Path),
+		{' '},
+		[]byte(doc.Title),
+		{' '},
+		[]byte(doc.Date.String()),
+		{' '},
+		[]byte("authors:"),
+		[]byte(strings.Join(doc.Authors, ",")),
+		[]byte(" tags:"),
+		[]byte(strings.Join(doc.Tags, ",")),
+	}
+	for _, b := range s {
+		cnt, err := w.Write(b)
+		if err != nil {
+			return n, err
+		}
+
+		n += cnt
+	}
+
+	return n, nil
 }
 
 func (o JsonOutput) OutputOne(doc *index.Document) (string, error) {
@@ -93,12 +121,39 @@ func (o JsonOutput) OutputOne(doc *index.Document) (string, error) {
 	return string(b), nil
 }
 
+func (o JsonOutput) OutputOneTo(w io.Writer, doc *index.Document) (int, error) {
+	b, err := json.Marshal(doc)
+	if err != nil {
+		return 0, err
+	}
+
+	return w.Write(b)
+}
+
 func (o JsonOutput) Output(docs []*index.Document) (string, error) {
 	b, err := json.Marshal(docs)
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func (o JsonOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
+	n := 0
+	for _, doc := range docs {
+		b, err := json.Marshal(doc)
+		if err != nil {
+			return n, err
+		}
+
+		nn, err := w.Write(b)
+		if err != nil {
+			return n, err
+		}
+		n += nn
+	}
+
+	return n, nil
 }
 
 func ParseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
@@ -166,21 +221,23 @@ func NewCustomOutput(formatStr string, datetimeFormat string) (CustomOutput, err
 
 func (o CustomOutput) OutputOne(doc *index.Document) (string, error) {
 	b := strings.Builder{}
-	// TODO: determine realistic initial capacity
 
-	if err := o.writeDoc(&b, doc); err != nil {
+	if _, err := o.writeDoc(&b, doc); err != nil {
 		return "", err
 	}
 
 	return b.String(), nil
 }
 
+func (o CustomOutput) OutputOneTo(w io.Writer, doc *index.Document) (int, error) {
+	return o.writeDoc(w, doc)
+}
+
 func (o CustomOutput) Output(docs []*index.Document) (string, error) {
 	b := strings.Builder{}
-	// TODO: determine realistic initial capacity
 
 	for i, doc := range docs {
-		if err := o.writeDoc(&b, doc); err != nil {
+		if _, err := o.writeDoc(&b, doc); err != nil {
 			return "", err
 		}
 		if i != len(docs)-1 {
@@ -191,35 +248,86 @@ func (o CustomOutput) Output(docs []*index.Document) (string, error) {
 	return b.String(), nil
 }
 
-func (o CustomOutput) writeDoc(b *strings.Builder, doc *index.Document) error {
+func (o CustomOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
+	n := 0
+
+	for _, doc := range docs {
+		nn, err := o.writeDoc(w, doc)
+		if err != nil {
+			return n, err
+		}
+		n += nn
+	}
+
+	return n, nil
+}
+
+func (o CustomOutput) writeDoc(w io.Writer, doc *index.Document) (int, error) {
 	curStrTok := 0
+	n := 0
 	for _, token := range o.tokens {
 		switch token {
 		case OUT_TOK_STR:
 			if curStrTok >= len(o.stringTokens) {
-				return ErrExpectedMoreStringTokens
+				return n, ErrExpectedMoreStringTokens
 			}
-			b.WriteString(o.stringTokens[curStrTok])
+			cnt, err := w.Write([]byte(o.stringTokens[curStrTok]))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 			curStrTok++
 		case OUT_TOK_PATH:
-			b.WriteString(doc.Path)
+			cnt, err := w.Write([]byte(doc.Path))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_TITLE:
-			b.WriteString(doc.Title)
+			cnt, err := w.Write([]byte(doc.Title))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_DATE:
-			b.WriteString(doc.Date.Format(o.datetimeFormat))
+			cnt, err := w.Write([]byte(doc.Date.Format(o.datetimeFormat)))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_FILETIME:
-			b.WriteString(doc.FileTime.Format(o.datetimeFormat))
+			cnt, err := w.Write([]byte(doc.FileTime.Format(o.datetimeFormat)))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_AUTHORS:
-			b.WriteString(strings.Join(doc.Authors, ", "))
+			cnt, err := w.Write([]byte(strings.Join(doc.Authors, ", ")))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_TAGS:
-			b.WriteString(strings.Join(doc.Tags, ", "))
+			cnt, err := w.Write([]byte(strings.Join(doc.Tags, ", ")))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_LINKS:
-			b.WriteString(strings.Join(doc.Links, ", "))
+			cnt, err := w.Write([]byte(strings.Join(doc.Links, ", ")))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		case OUT_TOK_META:
-			b.WriteString(doc.OtherMeta)
+			cnt, err := w.Write([]byte(doc.OtherMeta))
+			if err != nil {
+				return n, err
+			}
+			n += cnt
 		default:
-			return ErrUnrecognizedOutputToken
+			return n, ErrUnrecognizedOutputToken
 		}
 	}
-	return nil
+	return n, nil
 }

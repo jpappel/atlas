@@ -76,12 +76,10 @@ func runQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery
 		outputableResults = append(outputableResults, v)
 	}
 
-	s, err := qFlags.Outputer.Output(outputableResults)
+	_, err = qFlags.Outputer.OutputTo(os.Stdout, outputableResults)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to output results: ", err)
+		fmt.Fprintln(os.Stderr, "Error while outputting results: ", err)
 		return 1
 	}
-
-	fmt.Println(s)
 	return 0
 }

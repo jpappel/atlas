@@ -512,11 +512,11 @@ out:
 				return false, fmt.Errorf("Error occured while excuting query: %s", err)
 			}
 
-			s, err := query.DefaultOutput{}.Output(slices.Collect(maps.Values(results)))
+			_, err = query.DefaultOutput{}.OutputTo(w, slices.Collect(maps.Values(results)))
 			if err != nil {
 				return false, fmt.Errorf("Can't output results: %s", err)
 			}
-			fmt.Fprintln(w, s)
+			fmt.Fprintln(w)
 		case ITOK_VAR_NAME:
 			val, ok := inter.State[t.Text]
 			if !ok {
