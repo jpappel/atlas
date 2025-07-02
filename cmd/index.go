@@ -43,7 +43,7 @@ func setupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 			return nil
 		})
 
-	fs.Parse(args[1:])
+	fs.Parse(args)
 }
 
 func runIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {

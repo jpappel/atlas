@@ -40,7 +40,7 @@ func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags) {
 	fs.StringVar(&flags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "format string for --outFormat custom, see EXAMPLES for more details")
 	fs.IntVar(&flags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
 
-	fs.Parse(args[1:])
+	fs.Parse(args)
 }
 
 func runQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery string) byte {

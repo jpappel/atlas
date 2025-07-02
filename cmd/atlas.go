@@ -44,10 +44,11 @@ func printHelp() {
 	fmt.Println("atlas is a note indexing and querying tool")
 	fmt.Printf("\nUsage:\n  %s [global-flags] <command>\n\n", os.Args[0])
 	fmt.Println("Commands:")
-	fmt.Println("  index - build, update, or modify the index")
-	fmt.Println("  query - search against the index")
-	fmt.Println("  shell - start a debug query shell")
-	fmt.Println("  help  - print this help then exit")
+	fmt.Println("  index  - build, update, or modify the index")
+	fmt.Println("  query  - search against the index")
+	fmt.Println("  shell  - start a debug shell")
+	fmt.Println("  server - start an http query server (EXPERIMENTAL)")
+	fmt.Println("  help   - print this help then exit")
 }
 
 func main() {
@@ -72,16 +73,19 @@ func main() {
 	indexFs := flag.NewFlagSet("index flags", flag.ExitOnError)
 	queryFs := flag.NewFlagSet("query flags", flag.ExitOnError)
 	shellFs := flag.NewFlagSet("debug shell flags", flag.ExitOnError)
+	serverFs := flag.NewFlagSet("server flags", flag.ExitOnError)
 
 	indexFs.Usage = addGlobalFlagUsage(indexFs)
 	queryFs.Usage = addGlobalFlagUsage(queryFs)
 	shellFs.Usage = addGlobalFlagUsage(shellFs)
+	serverFs.Usage = addGlobalFlagUsage(serverFs)
 
 	flag.Parse()
 	args := flag.Args()
 
 	queryFlags := QueryFlags{Outputer: query.DefaultOutput{}}
 	indexFlags := IndexFlags{}
+	serverFlags := ServerFlags{Port: 8080}
 
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "No Command provided")
@@ -94,9 +98,11 @@ func main() {
 
 	switch command {
 	case "query", "q":
-		setupQueryFlags(args, queryFs, &queryFlags)
+		setupQueryFlags(args[1:], queryFs, &queryFlags)
 	case "index":
-		setupIndexFlags(args, indexFs, &indexFlags)
+		setupIndexFlags(args[1:], indexFs, &indexFlags)
+	case "server":
+		setupServerFlags(args[1:], serverFs, &serverFlags)
 	case "help":
 		printHelp()
 		flag.PrintDefaults()
@@ -151,6 +157,8 @@ func main() {
 		exitCode = int(runQuery(globalFlags, queryFlags, querier, searchQuery))
 	case "index":
 		exitCode = int(runIndex(globalFlags, indexFlags, querier))
+	case "server":
+		exitCode = int(runServer(globalFlags, serverFlags, querier))
 	case "shell":
 		state := make(shell.State)
 		env := make(map[string]string)
