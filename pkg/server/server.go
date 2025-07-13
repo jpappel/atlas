@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
@@ -47,9 +48,18 @@ func New(db *data.Query) *http.ServeMux {
 			slog.Error("Error executing query", slog.String("err", err.Error()))
 			return
 		}
+
 		docs := make([]*index.Document, 0, len(pathDocs))
+		var maxFileTime time.Time
 		for _, doc := range pathDocs {
 			docs = append(docs, doc)
+			if doc.FileTime.After(maxFileTime) {
+				maxFileTime = doc.FileTime
+			}
+		}
+
+		if !maxFileTime.IsZero() {
+			w.Header().Add("Last-Modified", maxFileTime.UTC().Format(http.TimeFormat))
 		}
 
 		var buf bytes.Buffer
@@ -60,7 +70,7 @@ func New(db *data.Query) *http.ServeMux {
 			slog.Error("Error writing json output", slog.String("err", err.Error()))
 		}
 
-		io.Copy(w, &buf)
+		http.ServeContent(w, r, "result.json", maxFileTime, bytes.NewReader(buf.Bytes()))
 	})
 
 	return mux
