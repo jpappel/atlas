@@ -139,21 +139,11 @@ func (o JsonOutput) Output(docs []*index.Document) (string, error) {
 }
 
 func (o JsonOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
-	n := 0
-	for _, doc := range docs {
-		b, err := json.Marshal(doc)
-		if err != nil {
-			return n, err
-		}
-
-		nn, err := w.Write(b)
-		if err != nil {
-			return n, err
-		}
-		n += nn
+	b, err := json.Marshal(docs)
+	if err != nil {
+		return 0, err
 	}
-
-	return n, nil
+	return w.Write(b)
 }
 
 func ParseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
