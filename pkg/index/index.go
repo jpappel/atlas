@@ -368,7 +368,7 @@ func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 				panic("Link parsing regex returned unexpected number of matches")
 			}
 			link := string(match[1])
-			if len(link) > 0 && len(strings.TrimSpace(link)) > 0 {
+			if len(link) > 0 {
 				doc.Links = append(doc.Links, link)
 			}
 		}
@@ -421,5 +421,5 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) map[string]*Docu
 }
 
 func init() {
-	linkRegex = regexp.MustCompile(`\[.*\]\((.*)\)`)
+	linkRegex = regexp.MustCompile(`\[.*\]\(\s*(\S+)\s*\)`)
 }
