@@ -100,6 +100,7 @@ func (o DefaultOutput) writeDoc(w io.Writer, doc *index.Document) (int, error) {
 		[]byte(strings.Join(doc.Authors, ",")),
 		[]byte(" tags:"),
 		[]byte(strings.Join(doc.Tags, ",")),
+		{'\n'},
 	}
 	for _, b := range s {
 		cnt, err := w.Write(b)
