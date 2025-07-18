@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -38,6 +39,7 @@ type ParseOpts struct {
 	ParseLinks      bool
 	IgnoreDateError bool
 	IgnoreMetaError bool
+	IgnoreHidden    bool
 }
 
 type InfoPath struct {
@@ -195,16 +197,20 @@ func (doc Document) Equal(other Document) bool {
 	return true
 }
 
-func visit(file InfoPath, visitQueue chan<- InfoPath, filterQueue chan<- InfoPath, wg *sync.WaitGroup) {
+func visit(file InfoPath, visitQueue chan<- InfoPath, filterQueue chan<- InfoPath, ignoreHidden bool, wg *sync.WaitGroup) {
 	// TODO: check if symlink, and handle appropriately
 	// TODO: extract error out of function
+
+	if ignoreHidden && path.Base(file.Path)[0] == '.' {
+		wg.Done()
+		return
+	}
 
 	if file.Info.IsDir() {
 		entries, err := os.ReadDir(file.Path)
 		if err != nil {
 			panic(err)
 		}
-
 		wg.Add(len(entries))
 		for _, entry := range entries {
 			entryInfo, err := entry.Info()
@@ -223,13 +229,13 @@ func visit(file InfoPath, visitQueue chan<- InfoPath, filterQueue chan<- InfoPat
 	wg.Done()
 }
 
-func workerTraverse(wg *sync.WaitGroup, visitQueue chan InfoPath, filterQueue chan<- InfoPath) {
+func workerTraverse(wg *sync.WaitGroup, ignoreHidden bool, visitQueue chan InfoPath, filterQueue chan<- InfoPath) {
 	for work := range visitQueue {
-		visit(work, visitQueue, filterQueue, wg)
+		visit(work, visitQueue, filterQueue, ignoreHidden, wg)
 	}
 }
 
-func (idx Index) Traverse(numWorkers uint) []string {
+func (idx Index) Traverse(numWorkers uint, ignoreHidden bool) []string {
 	if numWorkers <= 1 {
 		panic(fmt.Sprint("Invalid number of workers: ", numWorkers))
 	}
@@ -247,7 +253,7 @@ func (idx Index) Traverse(numWorkers uint) []string {
 
 	// start workers
 	for range numWorkers {
-		go workerTraverse(activeJobs, jobs, filterQueue)
+		go workerTraverse(activeJobs, ignoreHidden, jobs, filterQueue)
 	}
 
 	// init send

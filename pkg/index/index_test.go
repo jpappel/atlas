@@ -80,7 +80,7 @@ func TestIndex_Traverse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			idx := tt.indexCase(t)
-			got := idx.Traverse(tt.numWorkers)
+			got := idx.Traverse(tt.numWorkers, true)
 
 			slices.Sort(got)
 			slices.Sort(tt.want)

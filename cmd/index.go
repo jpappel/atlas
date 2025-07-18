@@ -19,10 +19,19 @@ type IndexFlags struct {
 }
 
 func setupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
+	flags.ParseLinks = true
+	flags.ParseMeta = true
 	fs.BoolVar(&flags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
 	fs.BoolVar(&flags.IgnoreMetaError, "ignoreMetaError", false, "ignore errors while parsing general YAML header info")
-	fs.BoolVar(&flags.ParseMeta, "parseMeta", true, "parse YAML header values other title, authors, date, tags")
-	fs.BoolVar(&flags.ParseLinks, "parseLinks", true, "parse file contents for links")
+	fs.BoolFunc("ignoreMeta", "don't parse YAML header values other title, authors, date, tags", func(s string) error {
+		flags.ParseMeta = false
+		return nil
+	})
+	fs.BoolFunc("ignoreLinks", "don't parse file contents for links", func(s string) error {
+		flags.ParseLinks = false
+		return nil
+	})
+	fs.BoolVar(&flags.IgnoreHidden, "ignoreHidden", false, "ignore hidden files while crawling")
 
 	fs.Usage = func() {
 		f := fs.Output()
@@ -84,7 +93,7 @@ func runIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 			)
 		}
 
-		traversedFiles := idx.Traverse(gFlags.NumWorkers)
+		traversedFiles := idx.Traverse(gFlags.NumWorkers, iFlags.IgnoreHidden)
 		fmt.Print("Crawled ", len(traversedFiles))
 
 		filteredFiles := idx.Filter(traversedFiles, gFlags.NumWorkers)
