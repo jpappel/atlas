@@ -27,7 +27,7 @@ func setupServerFlags(args []string, fs *flag.FlagSet, flags *ServerFlags) {
 	fs.Parse(args)
 }
 
-func runServer(gFlags GlobalFlags, sFlags ServerFlags, db *data.Query) byte {
+func runServer(sFlags ServerFlags, db *data.Query) byte {
 	addr := fmt.Sprintf("%s:%d", sFlags.Address, sFlags.Port)
 
 	s := http.Server{Addr: addr, Handler: server.New(db)}
@@ -48,7 +48,7 @@ func runServer(gFlags GlobalFlags, sFlags ServerFlags, db *data.Query) byte {
 	case <-exit:
 		slog.Info("Recieved signal to shutdown")
 	case err := <-serverErrors:
-		slog.Error("Server error", err)
+		slog.Error("Server error", slog.String("err", err.Error()))
 	}
 
 	slog.Info("Shutting down server")
@@ -56,7 +56,8 @@ func runServer(gFlags GlobalFlags, sFlags ServerFlags, db *data.Query) byte {
 	defer cancel()
 
 	if err := s.Shutdown(ctx); err != nil {
-		slog.Error("Error shutting down server", err)
+		slog.Error("Error shutting down server",
+			slog.String("err", err.Error()))
 		return 1
 	}
 

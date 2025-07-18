@@ -16,7 +16,7 @@ type QueryFlags struct {
 	OptimizationLevel int
 }
 
-func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags) {
+func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFormat string) {
 	// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
 	fs.Func("outFormat", "output `format` for queries (default, json, pathonly, custom)",
 		func(arg string) error {

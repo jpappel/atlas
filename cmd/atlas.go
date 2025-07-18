@@ -19,8 +19,7 @@ import (
 )
 
 const VERSION = "0.0.1"
-const ExitCommand = 2           // exit because of a command parsing error
-const dateFormat = time.RFC3339 // TODO: make a flag
+const ExitCommand = 2 // exit because of a command parsing error
 
 type GlobalFlags struct {
 	IndexRoot  string
@@ -28,6 +27,7 @@ type GlobalFlags struct {
 	LogLevel   string
 	LogJson    bool
 	NumWorkers uint
+	DateFormat string
 }
 
 func addGlobalFlagUsage(fs *flag.FlagSet) func() {
@@ -44,8 +44,8 @@ func printHelp() {
 	fmt.Println("atlas is a note indexing and querying tool")
 	fmt.Printf("\nUsage:\n  %s [global-flags] <command>\n\n", os.Args[0])
 	fmt.Println("Commands:")
-	fmt.Println("  index  - build, update, or modify the index")
-	fmt.Println("  query  - search against the index")
+	fmt.Println("  index  - build, update, or modify an index")
+	fmt.Println("  query  - search against an index")
 	fmt.Println("  shell  - start a debug shell")
 	fmt.Println("  server - start an http query server (EXPERIMENTAL)")
 	fmt.Println("  help   - print this help then exit")
@@ -69,11 +69,12 @@ func main() {
 	flag.StringVar(&globalFlags.LogLevel, "logLevel", "error", "set log `level` (debug, info, warn, error)")
 	flag.BoolVar(&globalFlags.LogJson, "logJson", false, "log to json")
 	flag.UintVar(&globalFlags.NumWorkers, "numWorkers", uint(runtime.NumCPU()), "number of worker threads to use (defaults to core count)")
+	flag.StringVar(&globalFlags.DateFormat, "dateFormat", time.RFC3339, "format for dates (see https://pkg.go.dev/time#Layout for more details)")
 
-	indexFs := flag.NewFlagSet("index flags", flag.ExitOnError)
-	queryFs := flag.NewFlagSet("query flags", flag.ExitOnError)
-	shellFs := flag.NewFlagSet("debug shell flags", flag.ExitOnError)
-	serverFs := flag.NewFlagSet("server flags", flag.ExitOnError)
+	indexFs := flag.NewFlagSet("index", flag.ExitOnError)
+	queryFs := flag.NewFlagSet("query", flag.ExitOnError)
+	shellFs := flag.NewFlagSet("debug", flag.ExitOnError)
+	serverFs := flag.NewFlagSet("server", flag.ExitOnError)
 
 	indexFs.Usage = addGlobalFlagUsage(indexFs)
 	queryFs.Usage = addGlobalFlagUsage(queryFs)
@@ -98,7 +99,7 @@ func main() {
 
 	switch command {
 	case "query", "q":
-		setupQueryFlags(args[1:], queryFs, &queryFlags)
+		setupQueryFlags(args[1:], queryFs, &queryFlags, globalFlags.DateFormat)
 	case "index":
 		setupIndexFlags(args[1:], indexFs, &indexFlags)
 	case "server":
@@ -158,7 +159,7 @@ func main() {
 	case "index":
 		exitCode = int(runIndex(globalFlags, indexFlags, querier))
 	case "server":
-		exitCode = int(runServer(globalFlags, serverFlags, querier))
+		exitCode = int(runServer(serverFlags, querier))
 	case "shell":
 		state := make(shell.State)
 		env := make(map[string]string)
