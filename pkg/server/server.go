@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jpappel/atlas/pkg/data"
@@ -23,6 +24,11 @@ func info(w http.ResponseWriter, r *http.Request) {
 
 func New(db *data.Query) *http.ServeMux {
 	mux := http.NewServeMux()
+
+	outputBufPool := &sync.Pool{}
+	outputBufPool.New = func() any {
+		return &bytes.Buffer{}
+	}
 
 	mux.HandleFunc("/", info)
 	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
@@ -62,8 +68,11 @@ func New(db *data.Query) *http.ServeMux {
 			w.Header().Add("Last-Modified", maxFileTime.UTC().Format(http.TimeFormat))
 		}
 
-		var buf bytes.Buffer
-		_, err = query.JsonOutput{}.OutputTo(&buf, docs)
+		buf, ok := outputBufPool.Get().(*bytes.Buffer)
+		if !ok {
+			panic("Expected *bytes.Buffer in pool")
+		}
+		_, err = query.JsonOutput{}.OutputTo(buf, docs)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error while writing output"))
