@@ -45,7 +45,7 @@ func (f Fill) Get(ctx context.Context) (*index.Document, error) {
 	return f.doc, nil
 }
 
-func (f FillMany) Get(ctx context.Context) (map[string]*index.Document, error) {
+func (f *FillMany) Get(ctx context.Context) (map[string]*index.Document, error) {
 	f.docs = make(map[string]*index.Document)
 	f.ids = make(map[string]int)
 

@@ -120,7 +120,7 @@ func createSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS Aliases(
 		authorId INT NOT NULL,
 		alias TEXT UNIQUE NOT NULL,
-		FOREIGN KEY (authorId) REFERENCES Authors(id)
+		FOREIGN KEY (authorId) REFERENCES Authors(id) ON DELETE CASCADE
 	)`)
 	if err != nil {
 		tx.Rollback()
@@ -141,7 +141,7 @@ func createSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS Links(
 		docId INT,
 		link TEXT NOT NULL,
-		FOREIGN KEY (docId) REFERENCES Documents(id),
+		FOREIGN KEY (docId) REFERENCES Documents(id) ON DELETE CASCADE,
 		UNIQUE(docId, link)
 	)`)
 	if err != nil {
@@ -153,7 +153,7 @@ func createSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS DocumentAuthors(
 		docId INT NOT NULL,
 		authorId INT NOT NULL,
-		FOREIGN KEY (docId) REFERENCES Documents(id),
+		FOREIGN KEY (docId) REFERENCES Documents(id) ON DELETE CASCADE,
 		FOREIGN KEY (authorId) REFERENCES Authors(id)
 	)`)
 	if err != nil {
@@ -165,10 +165,16 @@ func createSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS DocumentTags(
 		docId INT NOT NULL,
 		tagId INT NOT NULL,
-		FOREIGN KEY (docId) REFERENCES Documents(id),
+		FOREIGN KEY (docId) REFERENCES Documents(id) ON DELETE CASCADE,
 		FOREIGN KEY (tagId) REFERENCES Tags(id),
 		UNIQUE(docId, tagId)
 	)`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_doc_paths ON Documents (path)")
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -211,6 +217,34 @@ func createSchema(db *sql.DB) error {
 	}
 
 	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_new_author
+	BEFORE INSERT ON Authors
+	BEGIN
+		SELECT CASE WHEN NEW.name IN (SELECT alias FROM Aliases) THEN
+			RAISE(IGNORE)
+		END;
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_new_alias
+	BEFORE INSERT ON Aliases
+	BEGIN
+		SELECT CASE WHEN NEW.alias IN (SELECT name FROM Authors) THEN
+			RAISE(IGNORE)
+		END;
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
 	CREATE VIEW IF NOT EXISTS Search AS
 	SELECT
 		d.id AS docId,
@@ -235,6 +269,10 @@ func createSchema(db *sql.DB) error {
 		return err
 	}
 
+	if _, err = tx.Exec("PRAGMA OPTIMIZE"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -246,7 +284,8 @@ func (q Query) Close() error {
 func (q Query) Get(indexRoot string) (*index.Index, error) {
 	ctx := context.TODO()
 
-	docs, err := FillMany{Db: q.db}.Get(ctx)
+	f := FillMany{Db: q.db}
+	docs, err := f.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -264,28 +303,51 @@ func (q Query) Get(indexRoot string) (*index.Index, error) {
 func (q Query) Put(idx index.Index) error {
 	ctx := context.TODO()
 
-	p, err := NewPutMany(q.db, idx.Documents)
+	p, err := NewPutMany(ctx, q.db, idx.Documents)
 	if err != nil {
 		return err
 	}
 
-	if err := p.Insert(ctx); err != nil {
-		return err
-	}
-
-	return nil
+	return p.Insert()
 }
 
-// Update database with values from index
+// Update database with values from index, removes entries for deleted files
 func (q Query) Update(idx index.Index) error {
-	// TODO: implement
-	return nil
+	ctx := context.TODO()
+	u := NewUpdateMany(q.db, idx.Documents)
+	return u.Update(ctx)
 }
 
 func (q Query) GetDocument(path string) (*index.Document, error) {
 	ctx := context.TODO()
 	f := Fill{Path: path, Db: q.db}
 	return f.Get(ctx)
+}
+
+// Shrink database by removing unused authors, aliases, tags and VACUUM-ing
+func (q Query) Tidy() error {
+	_, err := q.db.Exec(`
+	DELETE FROM Authors
+	WHERE id NOT IN (
+		SELECT authorId FROM DocumentAuthors
+	)
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = q.db.Exec(`
+	DELETE FROM Tags
+	WHERE id NOT IN (
+		SELECT tagId FROM DocumentTags
+	)
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = q.db.Exec("VACUUM")
+	return err
 }
 
 func (q Query) Execute(artifact query.CompilationArtifact) (map[string]*index.Document, error) {

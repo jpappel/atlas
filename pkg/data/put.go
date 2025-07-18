@@ -13,6 +13,7 @@ type Put struct {
 	Id  int64
 	Doc index.Document
 	tx  *sql.Tx
+	db  *sql.DB
 }
 
 // TODO: rename struct
@@ -20,28 +21,31 @@ type PutMany struct {
 	Docs     map[int64]*index.Document
 	pathDocs map[string]*index.Document
 	db       *sql.DB
+	ctx      context.Context
 }
 
-func NewPut(ctx context.Context, db *sql.DB, doc index.Document) (Put, error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return Put{}, nil
-	}
-	p := Put{Doc: doc, tx: tx}
-	return p, nil
+func NewPut(db *sql.DB, doc index.Document) Put {
+	return Put{Doc: doc, db: db}
 }
 
-func NewPutMany(db *sql.DB, documents map[string]*index.Document) (PutMany, error) {
+func NewPutMany(ctx context.Context, db *sql.DB, documents map[string]*index.Document) (PutMany, error) {
 	docs := make(map[int64]*index.Document, len(documents))
 	p := PutMany{
 		Docs:     docs,
 		pathDocs: documents,
 		db:       db,
+		ctx:      ctx,
 	}
 	return p, nil
 }
 
-func (p Put) Insert() error {
+func (p *Put) Insert(ctx context.Context) error {
+	var err error
+	p.tx, err = p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil
+	}
+
 	if err := p.document(); err != nil {
 		p.tx.Rollback()
 		return err
@@ -65,20 +69,20 @@ func (p Put) Insert() error {
 	return p.tx.Commit()
 }
 
-func (p PutMany) Insert(ctx context.Context) error {
-	if err := p.documents(ctx); err != nil {
+func (p PutMany) Insert() error {
+	if err := p.documents(p.ctx); err != nil {
 		return fmt.Errorf("failed to insert documents: %v", err)
 	}
 
-	if err := p.tags(ctx); err != nil {
+	if err := p.tags(p.ctx); err != nil {
 		return fmt.Errorf("failed to insert tags: %v", err)
 	}
 
-	if err := p.links(ctx); err != nil {
+	if err := p.links(p.ctx); err != nil {
 		return fmt.Errorf("failed to insert links: %v", err)
 	}
 
-	if err := p.authors(ctx); err != nil {
+	if err := p.authors(p.ctx); err != nil {
 		return fmt.Errorf("failed to insert authors: %v", err)
 	}
 
@@ -181,18 +185,17 @@ func (p Put) tags() error {
 }
 
 func (p PutMany) tags(ctx context.Context) error {
-	newTagStmt, err := p.db.PrepareContext(ctx, "INSERT OR IGNORE INTO Tags (name) VALUES (?)")
-	if err != nil {
-		return err
-	}
-	defer newTagStmt.Close()
-
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	txNewTagStmt := tx.StmtContext(ctx, newTagStmt)
+	txNewTagStmt, err := tx.Prepare("INSERT OR IGNORE INTO Tags (name) VALUES (?)")
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer txNewTagStmt.Close()
 
 	for id, doc := range p.Docs {
 		if len(doc.Tags) == 0 {
@@ -232,7 +235,7 @@ func (p Put) links() error {
 	`
 	valueStr := fmt.Sprintf("(%d,?)", p.Id)
 	query, args := BatchQuery(preQuery, "", valueStr, ",", "", len(p.Doc.Links), p.Doc.Links)
-	if _, err := p.tx.Exec(query + "\n ON CONFLICT DO NOTHING", args...); err != nil {
+	if _, err := p.tx.Exec(query+"\n ON CONFLICT DO NOTHING", args...); err != nil {
 		return err
 	}
 
@@ -256,7 +259,7 @@ func (p PutMany) links(ctx context.Context) error {
 	`
 		valueStr := fmt.Sprintf("(%d,?)", id)
 		query, args := BatchQuery(preQuery, "", valueStr, ",", "", len(doc.Links), doc.Links)
-		if _, err := tx.Exec(query +"\n ON CONFLICT DO NOTHING", args...); err != nil {
+		if _, err := tx.Exec(query+"\n ON CONFLICT DO NOTHING", args...); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -270,7 +273,7 @@ func (p Put) authors() error {
 		return nil
 	}
 
-	// TODO: consider using temp table instead of cte
+	// PERF: consider using temp table instead of cte
 	namesCTE, args := BatchQuery("WITH names(n) AS",
 		"( VALUES ", "(?)", ",", "),", len(p.Doc.Authors), p.Doc.Authors)
 
@@ -278,9 +281,12 @@ func (p Put) authors() error {
 	filtered_names AS (
 		SELECT n
 		FROM names
-		LEFT JOIN Authors on Authors.name = n
-		LEFT JOIN Aliases on Aliases.alias = n
-		WHERE Authors.name IS NULL AND Aliases.alias IS NULL
+		LEFT JOIN (
+			SELECT * FROM Authors
+			UNION ALL
+			SELECT * FROM Aliases
+		) AS existing ON existing.name = names.n
+		WHERE existing.name IS NULL
 	)
 	INSERT INTO Authors(name)
 	SELECT n FROM filtered_names
@@ -293,10 +299,8 @@ func (p Put) authors() error {
 	matched_authors AS (
 		SELECT Authors.id AS author_id
 		FROM Authors
-		LEFT JOIN Aliases
-		ON Authors.id = Aliases.authorId
-		JOIN names
-		ON Authors.name = n OR Aliases.alias = n
+		LEFT JOIN Aliases ON Authors.id = Aliases.authorId
+		JOIN names ON Authors.name = n OR Aliases.alias = n
 	)
 	INSERT INTO DocumentAuthors(docId, authorId)
 	SELECT %d, author_id FROM matched_authors
@@ -344,9 +348,12 @@ func (p PutMany) authors(ctx context.Context) error {
 	WITH new_names AS (
 		SELECT temp.names.name
 		FROM temp.names
-		LEFT JOIN Authors on Authors.name = temp.names.name
-		LEFT JOIN Aliases on Aliases.alias = temp.names.name
-		WHERE Authors.name IS NULL AND Aliases.alias IS NULL
+		LEFT JOIN (
+			SELECT * FROM Authors
+			UNION ALL
+			SELECT * FROM Aliases
+		) AS existing ON existing.name = temp.names.name
+		WHERE existing.name IS NULL
 	)
 	INSERT INTO Authors(name)
 	SELECT name FROM new_names
@@ -359,10 +366,13 @@ func (p PutMany) authors(ctx context.Context) error {
 
 	_, err = tx.Exec(`
 	CREATE TEMPORARY TABLE name_ids AS
-		SELECT names.name AS name, COALESCE(Authors.id, Aliases.authorId) AS authorId
+		SELECT names.name AS name, existing.id AS authorId
 		FROM temp.names
-		LEFT JOIN Authors ON temp.names.name = Authors.name
-		LEFT JOIN Aliases ON temp.names.name = Aliases.alias
+		LEFT JOIN (
+			SELECT * FROM Authors
+			UNION ALL
+			SELECT * FROM Aliases
+		) AS existing ON existing.name = temp.names.name
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -394,9 +404,5 @@ func (p PutMany) authors(ctx context.Context) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }

@@ -41,12 +41,8 @@ func TestPut_Insert(t *testing.T) {
 			db := tt.newDb(t)
 			defer db.Close()
 
-			p, err := data.NewPut(ctx, db, tt.doc)
-			if err != nil {
-				t.Fatalf("could not construct receiver type: %v", err)
-			}
-
-			gotErr := p.Insert()
+			p := data.NewPut(db, tt.doc)
+			gotErr := p.Insert(t.Context())
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Fatalf("Unexpected error on Insert():, want %v got %v", tt.wantErr, gotErr)
 			} else if gotErr != nil {
@@ -105,12 +101,12 @@ func TestPutMany_Insert(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := tt.newDb(t)
-			p, err := data.NewPutMany(db, tt.documents)
+			p, err := data.NewPutMany(t.Context(), db, tt.documents)
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
-			gotErr := p.Insert(t.Context())
+			gotErr := p.Insert()
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Fatalf("Recieved unexpected error, got %v want %v", gotErr, tt.wantErr)
 			} else if err != nil {
