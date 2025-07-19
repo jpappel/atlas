@@ -17,6 +17,7 @@ import (
 )
 
 const COMMENT_STR = "#"
+const STACK_LIMIT = 256
 
 type keywords struct {
 	commands      []string
@@ -177,6 +178,9 @@ out:
 	for i := len(tokens) - 1; i >= 0; i-- {
 		t := tokens[i]
 		top := len(stack) - 1
+		if top >= STACK_LIMIT {
+			return false, fmt.Errorf("Stack Limit of %d exceeded", STACK_LIMIT)
+		}
 		switch t.Type {
 		case ITOK_CMD_HELP:
 			printHelp(w)
