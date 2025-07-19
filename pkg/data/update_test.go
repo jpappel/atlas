@@ -240,7 +240,7 @@ func TestUpdateMany_Update(t *testing.T) {
 			db := tt.newDb(t)
 			defer db.Close()
 
-			u := data.NewUpdateMany(db, tt.docs)
+			u := data.UpdateMany{Db: db, PathDocs: tt.docs}
 			gotErr := u.Update(t.Context())
 			if !errors.Is(gotErr, tt.wantErr) {
 				t.Fatalf("recieved unexpected error: got %v want %v", gotErr, tt.wantErr)

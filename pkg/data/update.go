@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/index"
 )
@@ -17,17 +19,13 @@ type Update struct {
 
 type UpdateMany struct {
 	Docs     map[int64]*index.Document
-	pathDocs map[string]*index.Document
+	PathDocs map[string]*index.Document
 	tx       *sql.Tx
-	db       *sql.DB
+	Db       *sql.DB
 }
 
 func NewUpdate(ctx context.Context, db *sql.DB, doc index.Document) Update {
 	return Update{Doc: doc, db: db}
-}
-
-func NewUpdateMany(db *sql.DB, docs map[string]*index.Document) UpdateMany {
-	return UpdateMany{pathDocs: docs, db: db}
 }
 
 // Replace a document if its filetime is newer than the one in the database.
@@ -59,34 +57,50 @@ func (u *Update) Update(ctx context.Context) error {
 		return err
 	}
 
+	if _, err := u.tx.Exec("INSERT OR REPLACE INTO Info(key,value,updated) VALUES (?,?,?)",
+		"lastUpdate", "singleUpdate", time.Now().UTC().Unix(),
+	); err != nil {
+		return err
+	}
+
 	return u.tx.Commit()
 }
 
 func (u *UpdateMany) Update(ctx context.Context) error {
 	var err error
-	u.tx, err = u.db.BeginTx(ctx, nil)
+	u.tx, err = u.Db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
 	hasUpdates, err := u.documents()
 	if !hasUpdates || err != nil {
+		slog.Debug("Error updating documents")
 		u.tx.Rollback()
 		return err
 	}
 
 	if err := u.tags(); err != nil {
+		slog.Debug("Error updating tags")
 		u.tx.Rollback()
 		return err
 	}
 
 	if err := u.links(); err != nil {
+		slog.Debug("Error updating links")
 		u.tx.Rollback()
 		return err
 	}
 
 	if err := u.authors(); err != nil {
+		slog.Debug("Error updating authors")
 		u.tx.Rollback()
+		return err
+	}
+
+	if _, err := u.tx.Exec("INSERT OR REPLACE INTO Info(key,value,updated) VALUES (?,?,?)",
+		"lastUpdate", "multiUpdate", time.Now().UTC().Unix(),
+	); err != nil {
 		return err
 	}
 
@@ -159,7 +173,7 @@ func (u *UpdateMany) documents() (bool, error) {
 	}
 	defer tempInsertStmt.Close()
 
-	for path, doc := range u.pathDocs {
+	for path, doc := range u.PathDocs {
 		filetime := sql.NullInt64{
 			Int64: doc.FileTime.Unix(),
 			Valid: !doc.FileTime.IsZero(),
@@ -223,7 +237,7 @@ func (u *UpdateMany) documents() (bool, error) {
 		if err := updates.Scan(&id, &path); err != nil {
 			return false, err
 		}
-		u.Docs[id] = u.pathDocs[path]
+		u.Docs[id] = u.PathDocs[path]
 		hasUpdate = true
 	}
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
@@ -80,12 +81,12 @@ func createSchema(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Commit()
 
 	_, err = tx.Exec(`
-	CREATE TABLE IF NOT EXISTS Indexes(
-		root TEXT NOT NULL,
-		followSym DATE
+	CREATE TABLE IF NOT EXISTS Info(
+		key TEXT PRIMARY KEY NOT NULL,
+		value TEXT NOT NULL,
+		updated INT NOT NULL
 	)`)
 	if err != nil {
 		tx.Rollback()
@@ -270,10 +271,18 @@ func createSchema(db *sql.DB) error {
 	}
 
 	if _, err = tx.Exec("PRAGMA OPTIMIZE"); err != nil {
+		tx.Rollback()
 		return err
 	}
 
-	return nil
+	if _, err = tx.Exec("INSERT OR IGNORE INTO Info (key, value, updated) VALUES (?,?,?)",
+		"created", "", time.Now().UTC().Unix(),
+	); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (q Query) Close() error {
@@ -314,7 +323,7 @@ func (q Query) Put(idx index.Index) error {
 // Update database with values from index, removes entries for deleted files
 func (q Query) Update(idx index.Index) error {
 	ctx := context.TODO()
-	u := NewUpdateMany(q.db, idx.Documents)
+	u := UpdateMany{Db: q.db, PathDocs: idx.Documents}
 	return u.Update(ctx)
 }
 

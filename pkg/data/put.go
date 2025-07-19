@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/index"
 )
@@ -66,6 +67,13 @@ func (p *Put) Insert(ctx context.Context) error {
 		return err
 	}
 
+	if _, err := p.tx.Exec("INSERT OR REPLACE INTO Info(key,value,updated) VALUES (?,?,?)",
+		"lastUpdate", "singlePut", time.Now().UTC().Unix(),
+	); err != nil {
+		p.tx.Rollback()
+		return err
+	}
+
 	return p.tx.Commit()
 }
 
@@ -84,6 +92,12 @@ func (p PutMany) Insert() error {
 
 	if err := p.authors(p.ctx); err != nil {
 		return fmt.Errorf("failed to insert authors: %v", err)
+	}
+
+	if _, err := p.db.ExecContext(p.ctx, "INSERT OR REPLACE INTO Info(key,value,updated) VALUES (?,?,?)",
+		"lastUpdate", "multiPut", time.Now().UTC().Unix(),
+	); err != nil {
+		return err
 	}
 
 	return nil
