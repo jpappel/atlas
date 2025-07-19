@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,6 +41,8 @@ type CustomOutput struct {
 	stringTokens   []string
 	tokens         []OutputToken
 	datetimeFormat string
+	docSeparator   string
+	listSeparator  string
 }
 
 // compile time interface check
@@ -201,13 +204,22 @@ func ParseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
 	return toks, strToks, nil
 }
 
-func NewCustomOutput(formatStr string, datetimeFormat string) (CustomOutput, error) {
+func NewCustomOutput(
+	formatStr string, datetimeFormat string,
+	docSeparator string, listSeparator string,
+) (CustomOutput, error) {
 	outToks, strToks, err := ParseOutputFormat(formatStr)
 	if err != nil {
 		return CustomOutput{}, err
 	}
 
-	return CustomOutput{strToks, outToks, datetimeFormat}, nil
+	return CustomOutput{
+		strToks,
+		outToks,
+		datetimeFormat,
+		docSeparator,
+		listSeparator,
+	}, nil
 }
 
 func (o CustomOutput) OutputOne(doc *index.Document) (string, error) {
@@ -255,70 +267,37 @@ func (o CustomOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error)
 
 func (o CustomOutput) writeDoc(w io.Writer, doc *index.Document) (int, error) {
 	curStrTok := 0
-	n := 0
+	var b bytes.Buffer
 	for _, token := range o.tokens {
 		switch token {
 		case OUT_TOK_STR:
 			if curStrTok >= len(o.stringTokens) {
-				return n, ErrExpectedMoreStringTokens
+				return 0, ErrExpectedMoreStringTokens
 			}
-			cnt, err := w.Write([]byte(o.stringTokens[curStrTok]))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(o.stringTokens[curStrTok])
 			curStrTok++
 		case OUT_TOK_PATH:
-			cnt, err := w.Write([]byte(doc.Path))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(doc.Path)
 		case OUT_TOK_TITLE:
-			cnt, err := w.Write([]byte(doc.Title))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(doc.Title)
 		case OUT_TOK_DATE:
-			cnt, err := w.Write([]byte(doc.Date.Format(o.datetimeFormat)))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(doc.Date.Format(o.datetimeFormat))
 		case OUT_TOK_FILETIME:
-			cnt, err := w.Write([]byte(doc.FileTime.Format(o.datetimeFormat)))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(doc.FileTime.Format(o.datetimeFormat))
 		case OUT_TOK_AUTHORS:
-			cnt, err := w.Write([]byte(strings.Join(doc.Authors, ", ")))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(strings.Join(doc.Authors, o.listSeparator))
 		case OUT_TOK_TAGS:
-			cnt, err := w.Write([]byte(strings.Join(doc.Tags, ", ")))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(strings.Join(doc.Tags, o.listSeparator))
 		case OUT_TOK_LINKS:
-			cnt, err := w.Write([]byte(strings.Join(doc.Links, ", ")))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(strings.Join(doc.Links, o.listSeparator))
 		case OUT_TOK_META:
-			cnt, err := w.Write([]byte(doc.OtherMeta))
-			if err != nil {
-				return n, err
-			}
-			n += cnt
+			b.WriteString(doc.OtherMeta)
 		default:
-			return n, ErrUnrecognizedOutputToken
+			return 0, ErrUnrecognizedOutputToken
 		}
 	}
-	return n, nil
+
+	b.WriteString(o.docSeparator)
+	n, err := io.Copy(w, &b)
+	return int(n), err
 }

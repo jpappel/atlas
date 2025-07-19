@@ -36,7 +36,7 @@ func setupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 	fs.Usage = func() {
 		f := fs.Output()
 		fmt.Fprintf(f, "Usage of %s %s\n", os.Args[0], fs.Name())
-		fmt.Fprintf(f, "\t%s [global-flags] %s [index-flags] <subcommand>\n\n", os.Args[0], fs.Name())
+		fmt.Fprintf(f, "  %s [global-flags] %s [index-flags] <subcommand>\n\n", os.Args[0], fs.Name())
 		fmt.Fprintln(f, "Subcommands:")
 		fmt.Fprintln(f, "build  - create a new index")
 		fmt.Fprintln(f, "update - update an existing index")
