@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,11 @@ import (
 	"github.com/jpappel/atlas/pkg/query"
 )
 
+type Server interface {
+	ListenAndServe() error
+	Shutdown(context.Context) error
+}
+
 func info(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`
 	<h1>Atlas Server</h1>
@@ -22,7 +28,7 @@ func info(w http.ResponseWriter, r *http.Request) {
 	`))
 }
 
-func New(db *data.Query) *http.ServeMux {
+func NewMux(db *data.Query) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	outputBufPool := &sync.Pool{}

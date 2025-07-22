@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type IndexFlags struct {
 	index.ParseOpts
 }
 
-func setupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
+func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 	flags.ParseLinks = true
 	flags.ParseMeta = true
 	fs.BoolVar(&flags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
@@ -77,7 +77,7 @@ func setupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 	}
 }
 
-func runIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
+func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 
 	switch iFlags.Subcommand {
 	case "build", "update":
@@ -99,19 +99,27 @@ func runIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 		filteredFiles := idx.Filter(traversedFiles, gFlags.NumWorkers)
 		fmt.Print(", Filtered ", len(filteredFiles))
 
-		idx.Documents = index.ParseDocs(filteredFiles, gFlags.NumWorkers, iFlags.ParseOpts)
+		var errCnt uint64
+		idx.Documents, errCnt = index.ParseDocs(filteredFiles, gFlags.NumWorkers, iFlags.ParseOpts)
 		fmt.Print(", Parsed ", len(idx.Documents), "\n")
+		if errCnt > 0 {
+			fmt.Printf("Encountered %d document parse errors", errCnt)
+			if !slog.Default().Enabled(context.Background(), slog.LevelWarn) {
+				fmt.Print(" (set log level to warn for more info)")
+			}
+			fmt.Println()
+		}
 
 		var err error
 		// switch in order to appease gopls...
 		switch iFlags.Subcommand {
-		case "index":
+		case "build":
 			err = db.Put(idx)
 		case "update":
 			err = db.Update(idx)
 		}
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(os.Stderr, "Error modifying index:", err)
 			return 1
 		}
 	case "tidy":
@@ -120,9 +128,12 @@ func runIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 			return 1
 		}
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised index subcommands: ", iFlags.Subcommand)
+		fmt.Fprintln(os.Stderr, "Unrecognized index subcommands: ", iFlags.Subcommand)
 		return 2
 	}
 
 	return 0
+}
+
+func init() {
 }

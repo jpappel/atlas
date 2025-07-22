@@ -6,7 +6,7 @@ import (
 )
 
 var ErrQueryFormat = errors.New("Incorrect query format")
-var ErrDatetimeTokenParse = errors.New("Unrecognized format for datetime token")
+var ErrDatetimeTokenParse = errors.New("Unrecognized format for datetime")
 
 // output errors
 var ErrUnrecognizedOutputToken = errors.New("Unrecognized output token")

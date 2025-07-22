@@ -1,5 +1,5 @@
 BINS := atlas
-SRC := $(wildcard cmd/*.go) $(wildcard pkg/*/*.go)
+SRC := main.go $(wildcard cmd/*.go) $(wildcard pkg/*/*.go)
 INSTALL_PATH := ~/.local/bin
 
 .PHONY: all install uninstall test info clean
@@ -7,7 +7,7 @@ INSTALL_PATH := ~/.local/bin
 all: $(BINS)
 
 atlas: $(SRC)
-	go build -o $@ $(wildcard ./cmd/*.go)
+	go build -o $@ $<
 
 test:
 	go test ./...

@@ -1,9 +1,12 @@
-package main
+package cmd
 
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
@@ -16,9 +19,11 @@ type QueryFlags struct {
 	ListSeparator     string
 	CustomFormat      string
 	OptimizationLevel int
+	SortBy            string
+	SortDesc          bool
 }
 
-func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFormat string) {
+func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFormat string) {
 	// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
 	fs.Func("outFormat", "output `format` for queries (default, json, pathonly, custom)",
 		func(arg string) error {
@@ -39,6 +44,9 @@ func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 			}
 			return fmt.Errorf("Unrecognized output format: %s", arg)
 		})
+
+	fs.StringVar(&flags.SortBy, "sortBy", "", "category to sort by (path,title,date,filetime,meta)")
+	fs.BoolVar(&flags.SortDesc, "sortDesc", false, "sort in descending order")
 	fs.StringVar(&flags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "format string for --outFormat custom, see Output Format for more details")
 	fs.IntVar(&flags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
 	fs.StringVar(&flags.DocumentSeparator, "docSeparator", "\n", "separator for custom output format")
@@ -81,7 +89,7 @@ func setupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 	fs.Parse(args)
 }
 
-func runQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery string) byte {
+func RunQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery string) byte {
 	tokens := query.Lex(searchQuery)
 	clause, err := query.Parse(tokens)
 	if err != nil {
@@ -112,6 +120,42 @@ func runQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery
 	outputableResults := make([]*index.Document, 0, len(results))
 	for _, v := range results {
 		outputableResults = append(outputableResults, v)
+	}
+
+	var docCmp func(a, b *index.Document) int
+	descMod := 1
+	if qFlags.SortDesc {
+		descMod = -1
+	}
+	switch qFlags.SortBy {
+	case "":
+	case "path":
+		docCmp = func(a, b *index.Document) int {
+			return descMod * strings.Compare(a.Path, b.Path)
+		}
+	case "title":
+		docCmp = func(a, b *index.Document) int {
+			return descMod * strings.Compare(a.Title, b.Title)
+		}
+	case "date":
+		docCmp = func(a, b *index.Document) int {
+			return descMod * a.Date.Compare(b.Date)
+		}
+	case "filetime":
+		docCmp = func(a, b *index.Document) int {
+			return descMod * a.FileTime.Compare(b.FileTime)
+		}
+	case "meta":
+		docCmp = func(a, b *index.Document) int {
+			return descMod * strings.Compare(a.OtherMeta, b.OtherMeta)
+		}
+	default:
+		slog.Error("Unrecognized category to sort by, leaving documents unsorted")
+		qFlags.SortBy = ""
+	}
+
+	if qFlags.SortBy != "" {
+		slices.SortFunc(outputableResults, docCmp)
 	}
 
 	_, err = qFlags.Outputer.OutputTo(os.Stdout, outputableResults)

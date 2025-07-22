@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,17 +21,26 @@ type ServerFlags struct {
 	Port    int
 }
 
-func setupServerFlags(args []string, fs *flag.FlagSet, flags *ServerFlags) {
-	fs.StringVar(&flags.Address, "address", "", "the address to listen on")
+func SetupServerFlags(args []string, fs *flag.FlagSet, flags *ServerFlags) {
+	fs.StringVar(&flags.Address, "address", "", "the address to listen on, prefix with 'unix:' to create a unixsocket")
 	fs.IntVar(&flags.Port, "port", 8080, "the port to bind to")
 
 	fs.Parse(args)
 }
 
-func runServer(sFlags ServerFlags, db *data.Query) byte {
-	addr := fmt.Sprintf("%s:%d", sFlags.Address, sFlags.Port)
+func RunServer(sFlags ServerFlags, db *data.Query) byte {
 
-	s := http.Server{Addr: addr, Handler: server.New(db)}
+	var addr string
+	var s server.Server
+	if after, ok := strings.CutPrefix(sFlags.Address, "unix:"); ok {
+		slog.Debug("Preparing unix domain socket")
+		addr = after
+		s = &server.UnixServer{Addr: addr, Db: db}
+	} else {
+		slog.Debug("Preparing http server")
+		addr = fmt.Sprintf("%s:%d", sFlags.Address, sFlags.Port)
+		s = &http.Server{Addr: addr, Handler: server.NewMux(db)}
+	}
 
 	serverErrors := make(chan error, 1)
 	exit := make(chan os.Signal, 1)
@@ -42,13 +52,16 @@ func runServer(sFlags ServerFlags, db *data.Query) byte {
 		if err := s.ListenAndServe(); err != nil {
 			serverErrors <- err
 		}
+		close(serverErrors)
 	}(serverErrors)
 
 	select {
 	case <-exit:
 		slog.Info("Recieved signal to shutdown")
 	case err := <-serverErrors:
-		slog.Error("Server error", slog.String("err", err.Error()))
+		if err != nil {
+			slog.Error("Server error", slog.String("err", err.Error()))
+		}
 	}
 
 	slog.Info("Shutting down server")

@@ -549,7 +549,10 @@ func Parse(tokens []Token) (*Clause, error) {
 			var t time.Time
 			var err error
 			if t, err = util.ParseDateTime(token.Value); err != nil {
-				return nil, ErrDatetimeTokenParse
+				return nil, fmt.Errorf("Cannot parse time `%s`, %v",
+					token.Value,
+					ErrDatetimeTokenParse,
+				)
 			}
 
 			clause.Statements[len(clause.Statements)-1].Value = DatetimeValue{t}

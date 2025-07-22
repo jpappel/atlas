@@ -1,34 +1,24 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
-	"runtime"
+	"slices"
 	"strings"
-	"time"
 
-	"github.com/adrg/xdg"
+	"github.com/jpappel/atlas/cmd"
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/query"
 	"github.com/jpappel/atlas/pkg/shell"
+	"github.com/jpappel/atlas/pkg/util"
 )
 
-const VERSION = "0.0.1"
+const VERSION = "0.4.1"
 const ExitCommand = 2 // exit because of a command parsing error
-
-type GlobalFlags struct {
-	IndexRoot  string
-	DBPath     string
-	LogLevel   string
-	LogJson    bool
-	NumWorkers uint
-	DateFormat string
-}
 
 func addGlobalFlagUsage(fs *flag.FlagSet) func() {
 	return func() {
@@ -40,57 +30,30 @@ func addGlobalFlagUsage(fs *flag.FlagSet) func() {
 	}
 }
 
-func printHelp() {
-	fmt.Println("atlas is a note indexing and querying tool")
-	fmt.Printf("\nUsage:\n  %s [global-flags] <command>\n\n", os.Args[0])
-	fmt.Println("Commands:")
-	fmt.Println("  index  - build, update, or modify an index")
-	fmt.Println("  query  - search against an index")
-	fmt.Println("  shell  - start a debug shell")
-	fmt.Println("  server - start an http query server (EXPERIMENTAL)")
-	fmt.Println("  help   - print this help then exit")
-}
-
 func main() {
-	home, _ := os.UserHomeDir()
-	dataHome := xdg.DataHome
-	if dataHome == "" {
-		dataHome = strings.Join([]string{home, ".local", "share"}, string(os.PathSeparator))
-	}
-	dataHome += string(os.PathSeparator) + "atlas"
-	if err := os.Mkdir(dataHome, 0755); errors.Is(err, fs.ErrExist) {
-	} else if err != nil {
-		panic(err)
-	}
-
-	globalFlags := GlobalFlags{}
-	flag.StringVar(&globalFlags.IndexRoot, "root", xdg.UserDirs.Documents, "root `directory` for indexing")
-	flag.StringVar(&globalFlags.DBPath, "db", dataHome+string(os.PathSeparator)+"default.db", "`path` to document database")
-	flag.StringVar(&globalFlags.LogLevel, "logLevel", "error", "set log `level` (debug, info, warn, error)")
-	flag.BoolVar(&globalFlags.LogJson, "logJson", false, "log to json")
-	flag.UintVar(&globalFlags.NumWorkers, "numWorkers", uint(runtime.NumCPU()), "number of worker threads to use (defaults to core count)")
-	flag.StringVar(&globalFlags.DateFormat, "dateFormat", time.RFC3339, "format for dates (see https://pkg.go.dev/time#Layout for more details)")
+	globalFlags := cmd.GlobalFlags{}
+	cmd.SetupGlobalFlags(flag.CommandLine, &globalFlags)
 
 	indexFs := flag.NewFlagSet("index", flag.ExitOnError)
 	queryFs := flag.NewFlagSet("query", flag.ExitOnError)
 	shellFs := flag.NewFlagSet("debug", flag.ExitOnError)
 	serverFs := flag.NewFlagSet("server", flag.ExitOnError)
+	completionsFs := flag.NewFlagSet("completions", flag.ContinueOnError)
 
-	indexFs.Usage = addGlobalFlagUsage(indexFs)
-	queryFs.Usage = addGlobalFlagUsage(queryFs)
+	// set default usage for flagsets without subcommands
 	shellFs.Usage = addGlobalFlagUsage(shellFs)
 	serverFs.Usage = addGlobalFlagUsage(serverFs)
 
 	flag.Parse()
 	args := flag.Args()
 
-	queryFlags := QueryFlags{Outputer: query.DefaultOutput{}}
-	indexFlags := IndexFlags{}
-	serverFlags := ServerFlags{Port: 8080}
+	queryFlags := cmd.QueryFlags{Outputer: query.DefaultOutput{}}
+	indexFlags := cmd.IndexFlags{}
+	serverFlags := cmd.ServerFlags{Port: 8080}
 
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "No Command provided")
-		printHelp()
+		cmd.PrintHelp()
 		fmt.Fprintln(flag.CommandLine.Output(), "\nGlobal Flags:")
 		flag.PrintDefaults()
 		os.Exit(ExitCommand)
@@ -99,20 +62,30 @@ func main() {
 
 	switch command {
 	case "query", "q":
-		setupQueryFlags(args[1:], queryFs, &queryFlags, globalFlags.DateFormat)
-	case "index":
-		setupIndexFlags(args[1:], indexFs, &indexFlags)
+		cmd.SetupQueryFlags(args[1:], queryFs, &queryFlags, globalFlags.DateFormat)
+	case "index", "i":
+		cmd.SetupIndexFlags(args[1:], indexFs, &indexFlags)
 	case "server":
-		setupServerFlags(args[1:], serverFs, &serverFlags)
+		cmd.SetupServerFlags(args[1:], serverFs, &serverFlags)
+	case "completions":
+		completionsFs.Parse(args[1:])
 	case "help":
-		printHelp()
+		cmd.PrintHelp()
 		flag.PrintDefaults()
 		return
 	case "shell":
 		shellFs.Parse(args[1:])
 	default:
 		fmt.Fprintln(os.Stderr, "Unrecognized command: ", command)
-		printHelp()
+		suggestedCommand, ok := util.Nearest(
+			command,
+			slices.Collect(maps.Keys(cmd.CommandHelp)),
+			util.LevensteinDistance, 3,
+		)
+		if ok {
+			fmt.Fprintf(os.Stderr, "Did you mean %s?\n\n", suggestedCommand)
+		}
+		cmd.PrintHelp()
 		os.Exit(ExitCommand)
 	}
 
@@ -132,9 +105,26 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Unrecognized log level:", globalFlags.LogLevel)
 		os.Exit(ExitCommand)
 	}
+
+	var logFile *os.File
+	var err error
+	switch globalFlags.LogFile {
+	case "":
+		logFile = os.Stderr
+	case "-":
+		logFile = os.Stdout
+	default:
+		logFile, err = os.Create(globalFlags.LogFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot use log file `%s`: %s", globalFlags.LogFile, err)
+			os.Exit(1)
+		}
+		defer logFile.Close()
+	}
+
 	var logHandler slog.Handler
 	if globalFlags.LogJson {
-		logHandler = slog.NewJSONHandler(os.Stderr, loggerOpts)
+		logHandler = slog.NewJSONHandler(logFile, loggerOpts)
 	} else {
 		// strip time
 		loggerOpts.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
@@ -143,7 +133,7 @@ func main() {
 			}
 			return a
 		}
-		logHandler = slog.NewTextHandler(os.Stderr, loggerOpts)
+		logHandler = slog.NewTextHandler(logFile, loggerOpts)
 	}
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
@@ -155,11 +145,22 @@ func main() {
 	switch command {
 	case "query", "q":
 		searchQuery := strings.Join(queryFs.Args(), " ")
-		exitCode = int(runQuery(globalFlags, queryFlags, querier, searchQuery))
-	case "index":
-		exitCode = int(runIndex(globalFlags, indexFlags, querier))
+		exitCode = int(cmd.RunQuery(globalFlags, queryFlags, querier, searchQuery))
+	case "index", "i":
+		exitCode = int(cmd.RunIndex(globalFlags, indexFlags, querier))
 	case "server":
-		exitCode = int(runServer(serverFlags, querier))
+		exitCode = int(cmd.RunServer(serverFlags, querier))
+	case "completions":
+		lang := completionsFs.Arg(0)
+		switch lang {
+		case "zsh":
+			cmd.ZshCompletions()
+		default:
+			fmt.Fprintf(os.Stderr, "Unrecognized completion language `%s`\n", lang)
+			fmt.Fprintf(os.Stderr, "Usage %s completions <language>\n", os.Args[0])
+			fmt.Fprintln(os.Stderr, "Supported languages: zsh")
+			exitCode = 2
+		}
 	case "shell":
 		state := make(shell.State)
 		env := make(map[string]string)

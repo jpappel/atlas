@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -383,21 +384,23 @@ func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 	return doc, nil
 }
 
-func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) map[string]*Document {
+func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) (map[string]*Document, uint64) {
 	jobs := make(chan string, numWorkers)
 	results := make(chan *Document, numWorkers)
 	docs := make(map[string]*Document, len(paths))
 	wg := &sync.WaitGroup{}
 
+	errCnt := &atomic.Uint64{}
 	wg.Add(int(numWorkers))
 	for range numWorkers {
 		go func(jobs <-chan string, results chan<- *Document, wg *sync.WaitGroup) {
 			for path := range jobs {
 				doc, err := ParseDoc(path, opts)
 				if err != nil {
-					slog.Error("Error occured while parsing file",
+					slog.Warn("Error occured while parsing file",
 						slog.String("path", path), slog.String("err", err.Error()),
 					)
+					errCnt.Add(1)
 					continue
 				}
 
@@ -423,7 +426,7 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) map[string]*Docu
 		docs[doc.Path] = doc
 	}
 
-	return docs
+	return docs, errCnt.Load()
 }
 
 func init() {

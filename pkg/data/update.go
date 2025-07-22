@@ -201,6 +201,7 @@ func (u *UpdateMany) documents() (bool, error) {
 		SELECT path FROM temp.updateDocs
 	)`)
 	if err != nil {
+		slog.Debug("Failed to remove missing files from index")
 		return false, err
 	}
 
@@ -215,6 +216,7 @@ func (u *UpdateMany) documents() (bool, error) {
 	WHERE excluded.fileTime > Documents.fileTime
 	`)
 	if err != nil {
+		slog.Debug("Failed document upsert")
 		return false, err
 	}
 
