@@ -23,7 +23,7 @@ func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 	flags.ParseMeta = true
 	fs.BoolVar(&flags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
 	fs.BoolVar(&flags.IgnoreMetaError, "ignoreMetaError", false, "ignore errors while parsing general YAML header info")
-	fs.BoolFunc("ignoreMeta", "don't parse YAML header values other title, authors, date, tags", func(s string) error {
+	fs.BoolFunc("ignoreMeta", "only parse title, authors, date, tags from YAML headers", func(s string) error {
 		flags.ParseMeta = false
 		return nil
 	})
@@ -32,20 +32,6 @@ func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 		return nil
 	})
 	fs.BoolVar(&flags.IgnoreHidden, "ignoreHidden", false, "ignore hidden files while crawling")
-
-	fs.Usage = func() {
-		f := fs.Output()
-		fmt.Fprintf(f, "Usage of %s %s\n", os.Args[0], fs.Name())
-		fmt.Fprintf(f, "  %s [global-flags] %s [index-flags] <subcommand>\n\n", os.Args[0], fs.Name())
-		fmt.Fprintln(f, "Subcommands:")
-		fmt.Fprintln(f, "build  - create a new index")
-		fmt.Fprintln(f, "update - update an existing index")
-		fmt.Fprintln(f, "tidy   - cleanup an index")
-		fmt.Fprintln(f, "\nIndex Flags:")
-		fs.PrintDefaults()
-		fmt.Fprintln(f, "\nGlobal Flags:")
-		flag.PrintDefaults()
-	}
 
 	customFilters := false
 	flags.Filters = index.DefaultFilters()
@@ -66,6 +52,12 @@ func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 
 			return nil
 		})
+
+	fs.Usage = func() {
+		f := fs.Output()
+		Help("index", f)
+		PrintGlobalFlags(f)
+	}
 
 	fs.Parse(args)
 

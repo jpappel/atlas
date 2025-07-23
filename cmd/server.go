@@ -22,7 +22,7 @@ type ServerFlags struct {
 }
 
 func SetupServerFlags(args []string, fs *flag.FlagSet, flags *ServerFlags) {
-	fs.StringVar(&flags.Address, "address", "", "the address to listen on, prefix with 'unix:' to create a unixsocket")
+	fs.StringVar(&flags.Address, "address", "127.0.0.1", "the address to listen on, prefix with 'unix:' to create a unixsocket")
 	fs.IntVar(&flags.Port, "port", 8080, "the port to bind to")
 
 	fs.Parse(args)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,11 +22,20 @@ type Server interface {
 }
 
 func info(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(`
-	<h1>Atlas Server</h1>
-	<p>This is the experimental atlas server!
-	Try POSTing a query to <pre>/search</pre></p>
-	`))
+	w.Write([]byte(`<h1>Atlas Server</h1>
+<p>This is the experimental atlas server!
+Try POSTing a query to <pre>/search</pre></p>
+<hr>
+<p>You can sort the results using the query param <pre>sortBy</pre>
+<ul>
+<li>path</li>
+<li>title</li>
+<li>date</li>
+<li>filetime</li>
+<li>meta</li>
+</ul>
+You can change the order using <pre>sortOrder</pre> with asc or desc
+</p>`))
 }
 
 func NewMux(db *data.Query) *http.ServeMux {
@@ -37,7 +47,7 @@ func NewMux(db *data.Query) *http.ServeMux {
 	}
 
 	mux.HandleFunc("/", info)
-	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /search", func(w http.ResponseWriter, r *http.Request) {
 		b := &strings.Builder{}
 		if _, err := io.Copy(b, r.Body); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -67,6 +77,16 @@ func NewMux(db *data.Query) *http.ServeMux {
 			docs = append(docs, doc)
 			if doc.FileTime.After(maxFileTime) {
 				maxFileTime = doc.FileTime
+			}
+		}
+
+		queryParams := r.URL.Query()
+		if queryParams.Has("sortBy") {
+			sortBy := queryParams.Get("sortBy")
+			sortOrder := queryParams.Get("sortOrder")
+			docCmp, ok := index.NewDocCmp(sortBy, sortOrder == "desc" || sortOrder == "descending")
+			if ok {
+				slices.SortFunc(docs, docCmp)
 			}
 		}
 

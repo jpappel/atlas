@@ -183,7 +183,7 @@ out:
 		}
 		switch t.Type {
 		case ITOK_CMD_HELP:
-			printHelp(w)
+			PrintHelp(w)
 			break out
 		case ITOK_CMD_EXIT:
 			return true, nil
@@ -755,7 +755,7 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 	return tokens
 }
 
-func printHelp(w io.Writer) {
+func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "Shitty debug shell for atlas")
 	fmt.Fprintln(w, "help                                  - print this help")
 	fmt.Fprintln(w, "exit                                  - exit interactive mode")

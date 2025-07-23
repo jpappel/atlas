@@ -3,10 +3,8 @@ package cmd
 import (
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
@@ -47,43 +45,17 @@ func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 
 	fs.StringVar(&flags.SortBy, "sortBy", "", "category to sort by (path,title,date,filetime,meta)")
 	fs.BoolVar(&flags.SortDesc, "sortDesc", false, "sort in descending order")
-	fs.StringVar(&flags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "format string for --outFormat custom, see Output Format for more details")
+	fs.StringVar(&flags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "`format` string for --outFormat custom, see `atlas help query` for more details")
 	fs.IntVar(&flags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
 	fs.StringVar(&flags.DocumentSeparator, "docSeparator", "\n", "separator for custom output format")
 	fs.StringVar(&flags.ListSeparator, "listSeparator", ", ", "separator for list fields")
 
 	fs.Usage = func() {
-		f := fs.Output()
-		fmt.Fprintf(f, "Usage of %s %s\n", os.Args[0], fs.Name())
-		fmt.Fprintf(f, "  %s [global-flags] %s [query-flags]\n\n",
-			os.Args[0], fs.Name())
-		fmt.Fprintln(f, "Query Flags:")
-		fs.PrintDefaults()
-		fmt.Fprintln(f, "\nOutput Format:")
-		help := `The output format of query results can be customized by setting -outCustomFormat.
-
-  The output of each document has the value of -docSeparator appended to it.
-  Dates are formated using -dateFormat
-  Lists use -listSeparator to delimit elements
-
-  Placeholder - Type - Value
-       %p     - Str  - path
-       %T     - Str  - title
-       %d     - Date - date
-       %f     - Date - filetime
-       %a     - List - authors
-       %t     - List - tags
-       %l     - List - links
-       %m     - Str  - meta
-
-  Examples:
-    "%p %T %d tags:%t" -> '/a/path/to/document A Title 2006-01-02T15:04:05Z07:00 tags:tag1, tag2\n'
-    "<h1><a href="%p">%T</a></h1>" -> '<h1><a href="/a/path/to/document">A Title</a></h1>\n'
-
-`
-		fmt.Fprint(f, help)
-		fmt.Fprintln(f, "Global Flags:")
-		flag.PrintDefaults()
+		w := fs.Output()
+		fmt.Fprintf(w, "%s [global-flags] query [query-flags] <query>...\n\n", os.Args[0])
+		fmt.Fprintln(w, "Query Flags:")
+		PrintFlagSet(w, fs)
+		PrintGlobalFlags(w)
 	}
 
 	fs.Parse(args)
@@ -122,40 +94,11 @@ func RunQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery
 		outputableResults = append(outputableResults, v)
 	}
 
-	var docCmp func(a, b *index.Document) int
-	descMod := 1
-	if qFlags.SortDesc {
-		descMod = -1
-	}
-	switch qFlags.SortBy {
-	case "":
-	case "path":
-		docCmp = func(a, b *index.Document) int {
-			return descMod * strings.Compare(a.Path, b.Path)
-		}
-	case "title":
-		docCmp = func(a, b *index.Document) int {
-			return descMod * strings.Compare(a.Title, b.Title)
-		}
-	case "date":
-		docCmp = func(a, b *index.Document) int {
-			return descMod * a.Date.Compare(b.Date)
-		}
-	case "filetime":
-		docCmp = func(a, b *index.Document) int {
-			return descMod * a.FileTime.Compare(b.FileTime)
-		}
-	case "meta":
-		docCmp = func(a, b *index.Document) int {
-			return descMod * strings.Compare(a.OtherMeta, b.OtherMeta)
-		}
-	default:
-		slog.Error("Unrecognized category to sort by, leaving documents unsorted")
-		qFlags.SortBy = ""
-	}
-
 	if qFlags.SortBy != "" {
-		slices.SortFunc(outputableResults, docCmp)
+		docCmp, ok := index.NewDocCmp(qFlags.SortBy, qFlags.SortDesc)
+		if ok {
+			slices.SortFunc(outputableResults, docCmp)
+		}
 	}
 
 	_, err = qFlags.Outputer.OutputTo(os.Stdout, outputableResults)

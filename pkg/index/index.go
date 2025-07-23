@@ -336,6 +336,39 @@ func (idx Index) Filter(paths []string, numWorkers uint) []string {
 	return fPaths
 }
 
+// Create a comparison function for documents by field.
+// Allowed fields: path,title,date,filetime,meta
+func NewDocCmp(field string, reverse bool) (func(*Document, *Document) int, bool) {
+	descMod := 1
+	if reverse {
+		descMod = -1
+	}
+	switch field {
+	case "path":
+		return func(a, b *Document) int {
+			return descMod * strings.Compare(a.Path, b.Path)
+		}, true
+	case "title":
+		return func(a, b *Document) int {
+			return descMod * strings.Compare(a.Title, b.Title)
+		}, true
+	case "date":
+		return func(a, b *Document) int {
+			return descMod * a.Date.Compare(b.Date)
+		}, true
+	case "filetime":
+		return func(a, b *Document) int {
+			return descMod * a.FileTime.Compare(b.FileTime)
+		}, true
+	case "meta":
+		return func(a, b *Document) int {
+			return descMod * strings.Compare(a.OtherMeta, b.OtherMeta)
+		}, true
+	}
+
+	return nil, false
+}
+
 func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 	doc := &Document{Path: path, parseOpts: opts}
 
@@ -430,5 +463,5 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) (map[string]*Doc
 }
 
 func init() {
-	linkRegex = regexp.MustCompile(`\[.*\]\(\s*(\S+)\s*\)`)
+	linkRegex = regexp.MustCompile(`\[.*\]\(\s*([^\)]+)\s*\)`)
 }

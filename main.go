@@ -3,18 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
-	"maps"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/jpappel/atlas/cmd"
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/query"
-	"github.com/jpappel/atlas/pkg/shell"
-	"github.com/jpappel/atlas/pkg/util"
 )
 
 const VERSION = "0.4.1"
@@ -53,9 +48,8 @@ func main() {
 
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "No Command provided")
-		cmd.PrintHelp()
-		fmt.Fprintln(flag.CommandLine.Output(), "\nGlobal Flags:")
-		flag.PrintDefaults()
+		cmd.PrintHelp(os.Stderr)
+		cmd.PrintGlobalFlags(os.Stderr)
 		os.Exit(ExitCommand)
 	}
 	command := args[0]
@@ -70,22 +64,16 @@ func main() {
 	case "completions":
 		completionsFs.Parse(args[1:])
 	case "help":
-		cmd.PrintHelp()
-		flag.PrintDefaults()
+		if len(args) > 1 {
+			cmd.Help(strings.Join(args[1:], " "), os.Stdout)
+		} else {
+			cmd.Help("", os.Stdout)
+		}
 		return
 	case "shell":
 		shellFs.Parse(args[1:])
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized command: ", command)
-		suggestedCommand, ok := util.Nearest(
-			command,
-			slices.Collect(maps.Keys(cmd.CommandHelp)),
-			util.LevensteinDistance, 3,
-		)
-		if ok {
-			fmt.Fprintf(os.Stderr, "Did you mean %s?\n\n", suggestedCommand)
-		}
-		cmd.PrintHelp()
+		cmd.Help(command, os.Stderr)
 		os.Exit(ExitCommand)
 	}
 
@@ -162,19 +150,7 @@ func main() {
 			exitCode = 2
 		}
 	case "shell":
-		state := make(shell.State)
-		env := make(map[string]string)
-
-		env["workers"] = fmt.Sprint(globalFlags.NumWorkers)
-		env["db_path"] = globalFlags.DBPath
-		env["index_root"] = globalFlags.IndexRoot
-		env["version"] = VERSION
-
-		interpreter := shell.NewInterpreter(state, env, globalFlags.NumWorkers, querier)
-		if err := interpreter.Run(); err != nil && err != io.EOF {
-			slog.Error("Fatal error occured", slog.String("err", err.Error()))
-			exitCode = 1
-		}
+		exitCode = int(cmd.RunShell(globalFlags, querier, VERSION))
 	}
 
 	querier.Close()
