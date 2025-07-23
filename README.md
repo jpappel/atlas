@@ -35,7 +35,7 @@ Global Flags:
   -dateFormat format
     	format for dates (see https://pkg.go.dev/time#Layout for more details) (default "2006-01-02T15:04:05Z07:00")
   -db path
-    	path to document database (default "/home/goose/.local/share/atlas/default.db")
+    	path to document database (default "$HOME/.local/share/atlas/default.db")
   -logFile file
     	file to log errors to, use '-' for stdout and empty for stderr
   -logJson
@@ -43,7 +43,7 @@ Global Flags:
   -logLevel level
     	set log level (debug, info, warn, error) (default "error")
   -numWorkers uint
-    	number of worker threads to use (defaults to core count) (default 4)
+    	number of worker threads to use (defaults to core count)
   -root directory
-    	root directory for indexing (default "/home/goose/doc")
+    	root directory for indexing (default "$XDG_DATA_HOME")
 ```
