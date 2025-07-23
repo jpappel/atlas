@@ -54,20 +54,20 @@ var _ Outputer = &CustomOutput{}
 // and a nil error
 func (o DefaultOutput) OutputOne(doc *index.Document) (string, error) {
 	b := strings.Builder{}
-	o.writeDoc(&b, doc)
+	o.WriteDoc(&b, doc)
 
 	return b.String(), nil
 }
 
 func (o DefaultOutput) OutputOneTo(w io.Writer, doc *index.Document) (int, error) {
-	return o.writeDoc(w, doc)
+	return o.WriteDoc(w, doc)
 }
 
 func (o DefaultOutput) Output(docs []*index.Document) (string, error) {
 	b := strings.Builder{}
 
 	for i, doc := range docs {
-		o.writeDoc(&b, doc)
+		o.WriteDoc(&b, doc)
 		if i != len(docs)-1 {
 			b.WriteRune('\n')
 		}
@@ -79,7 +79,7 @@ func (o DefaultOutput) Output(docs []*index.Document) (string, error) {
 func (o DefaultOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
 	n := 0
 	for _, doc := range docs {
-		nn, err := o.writeDoc(w, doc)
+		nn, err := o.WriteDoc(w, doc)
 		if err != nil {
 			return n, err
 		}
@@ -90,7 +90,7 @@ func (o DefaultOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error
 	return n, nil
 }
 
-func (o DefaultOutput) writeDoc(w io.Writer, doc *index.Document) (int, error) {
+func (o DefaultOutput) WriteDoc(w io.Writer, doc *index.Document) (int, error) {
 	var n int
 	s := [][]byte{
 		[]byte(doc.Path),

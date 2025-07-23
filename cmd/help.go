@@ -104,7 +104,7 @@ func Help(topic string, w io.Writer) {
 		shell.PrintHelp(w)
 	case "server":
 		SetupServerFlags(nil, fs, &ServerFlags{})
-		fmt.Fprintf(w, "%s [global-flags] server [server-flags]", os.Args[0])
+		fmt.Fprintf(w, "%s [global-flags] server [server-flags]\n", os.Args[0])
 		fmt.Fprintln(w, "Run a server to execute queries over HTTP or a unix domain socket")
 		fmt.Fprintln(w, "HTTP Server:")
 		fmt.Fprintln(w, "  To execute a query POST it in the request body to /search")
