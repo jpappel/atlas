@@ -55,6 +55,10 @@ func RunServer(sFlags ServerFlags, db *data.Query) byte {
 		close(serverErrors)
 	}(serverErrors)
 
+	optCtx, optCancel := context.WithCancel(context.Background())
+	go db.PeriodicOptimize(optCtx, 1*time.Hour)
+	defer optCancel()
+
 	select {
 	case <-exit:
 		slog.Info("Recieved signal to shutdown")

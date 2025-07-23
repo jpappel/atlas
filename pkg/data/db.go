@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -286,6 +287,7 @@ func createSchema(db *sql.DB) error {
 }
 
 func (q Query) Close() error {
+	q.db.Exec("PRAGMA OPTIMIZE")
 	return q.db.Close()
 }
 
@@ -335,28 +337,51 @@ func (q Query) GetDocument(path string) (*index.Document, error) {
 
 // Shrink database by removing unused authors, aliases, tags and VACUUM-ing
 func (q Query) Tidy() error {
-	_, err := q.db.Exec(`
+	if _, err := q.db.Exec(`
 	DELETE FROM Authors
 	WHERE id NOT IN (
 		SELECT authorId FROM DocumentAuthors
-	)
-	`)
-	if err != nil {
+	)`); err != nil {
 		return err
 	}
 
-	_, err = q.db.Exec(`
+	if _, err := q.db.Exec(`
 	DELETE FROM Tags
 	WHERE id NOT IN (
 		SELECT tagId FROM DocumentTags
 	)
-	`)
-	if err != nil {
+	`); err != nil {
 		return err
 	}
 
-	_, err = q.db.Exec("VACUUM")
-	return err
+	if _, err := q.db.Exec("VACUUM"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (q Query) PeriodicOptimize(ctx context.Context, d time.Duration) {
+	_, err := q.db.ExecContext(ctx, "PRAGMA OPTIMIZE optimize=0x10002")
+	if err != nil {
+		return
+	}
+
+	ticker := time.NewTicker(d)
+
+	for {
+		select {
+		case <-ticker.C:
+			slog.Debug("Running periodic db optimization",
+				slog.Int64("next", time.Now().Unix()+int64(d)),
+			)
+			if _, err := q.db.ExecContext(ctx, "PRAGMA OPTIMIZE"); err != nil {
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (q Query) Execute(artifact query.CompilationArtifact) (map[string]*index.Document, error) {
