@@ -463,5 +463,5 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) (map[string]*Doc
 }
 
 func init() {
-	linkRegex = regexp.MustCompile(`\[.*\]\(\s*([^\)]+)\s*\)`)
+	linkRegex = regexp.MustCompile(`\[.*\]\(\s*([^\)\s]+)\s*\)`)
 }
