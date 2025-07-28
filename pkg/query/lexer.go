@@ -22,16 +22,14 @@ const (
 	TOK_CLAUSE_END
 
 	// statement tokens
-	TOK_OP_NEG  // negation
-	TOK_OP_EQ   // equal
-	TOK_OP_AP   // approximate/fuzzy
-	TOK_OP_NE   // not equal
-	TOK_OP_LT   // less than
-	TOK_OP_LE   // less than or equal
-	TOK_OP_GE   // greater than or equal
-	TOK_OP_GT   // greaterthan
-	TOK_OP_PIPE // external pipe
-	TOK_OP_ARG  // external arg
+	TOK_OP_NEG // negation
+	TOK_OP_EQ  // equal
+	TOK_OP_AP  // approximate/fuzzy
+	TOK_OP_NE  // not equal
+	TOK_OP_LT  // less than
+	TOK_OP_LE  // less than or equal
+	TOK_OP_GE  // greater than or equal
+	TOK_OP_GT  // greaterthan
 	// categories
 	TOK_CAT_PATH
 	TOK_CAT_TITLE
@@ -79,10 +77,6 @@ func (tokType queryTokenType) String() string {
 		return "Greater Than or Equal"
 	case TOK_OP_GT:
 		return "Greater Than"
-	case TOK_OP_PIPE:
-		return "Pipe External Command"
-	case TOK_OP_ARG:
-		return "Argument External Command"
 	case TOK_CAT_PATH:
 		return "Filepath Category"
 	case TOK_CAT_TITLE:
@@ -132,7 +126,7 @@ func (t queryTokenType) isCategory() bool {
 	return t.Any(TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META)
 }
 func (t queryTokenType) isOperation() bool {
-	return t.Any(TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT, TOK_OP_PIPE, TOK_OP_ARG)
+	return t.Any(TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT)
 }
 func (t queryTokenType) isValue() bool {
 	return t == TOK_VAL_STR || t == TOK_VAL_DATETIME
@@ -227,8 +221,6 @@ func tokenizeOperation(s string) Token {
 	switch s {
 	case "!=":
 		t.Type = TOK_OP_NE
-	case "!+":
-		t.Type = TOK_OP_ARG
 	case "<=":
 		t.Type = TOK_OP_LE
 	case ">=":
@@ -241,8 +233,6 @@ func tokenizeOperation(s string) Token {
 		t.Type = TOK_OP_LT
 	case ">":
 		t.Type = TOK_OP_GT
-	case "!":
-		t.Type = TOK_OP_PIPE
 	}
 
 	return t
@@ -331,7 +321,7 @@ func TokensStringify(tokens []Token) string {
 func init() {
 	negPattern := `(?<negation>-?)`
 	categoryPattern := `(?<category>T|p(?:ath)?|a(?:uthor)?|d(?:ate)?|f(?:iletime)?|t(?:ags|itle)?|l(?:inks)?|m(?:eta)?)`
-	opPattern := `(?<operator>!=|!+|<=|>=|=|:|~|<|>|!)`
+	opPattern := `(?<operator>!=|<=|>=|=|:|~|<|>)`
 	valPattern := `(?<value>".*?"|\S*[^\s\)])`
 	statementPattern := `(?<statement>` + negPattern + categoryPattern + opPattern + valPattern + `)`
 	unknownPattern := `(?<unknown>\S*".*?"[^\s)]*|\S*[^\s\)])`

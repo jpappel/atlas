@@ -99,10 +99,6 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				} else {
 					opStr = "!= "
 				}
-			case OP_PIPE:
-				opStr = "?op_pipe "
-			case OP_ARG:
-				opStr = "?op_arg "
 			default:
 				return nil, &CompileError{
 					fmt.Sprintf("unexpected query.opType %#v", op),

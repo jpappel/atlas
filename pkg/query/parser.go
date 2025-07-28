@@ -36,8 +36,6 @@ const (
 	OP_LE             // less than or equal
 	OP_GE             // greater than or equal
 	OP_GT             // greater than
-	OP_PIPE           // external pipe
-	OP_ARG            // external arg
 )
 
 type clauseOperator int16
@@ -190,10 +188,6 @@ func (t opType) String() string {
 		return "Greater Than or Equal"
 	case OP_GT:
 		return "Greater Than"
-	case OP_PIPE:
-		return "Pipe External Command"
-	case OP_ARG:
-		return "Argument External Command"
 	default:
 		return "Invalid"
 	}
@@ -240,10 +234,6 @@ func tokToOp(t queryTokenType) opType {
 		return OP_GE
 	case TOK_OP_GT:
 		return OP_GT
-	case TOK_OP_PIPE:
-		return OP_PIPE
-	case TOK_OP_ARG:
-		return OP_ARG
 	default:
 		return OP_UNKNOWN
 	}
@@ -251,7 +241,7 @@ func tokToOp(t queryTokenType) opType {
 
 // Apply negation to a statements operator
 func (s *Statement) Simplify() {
-	if s.Negated && s.Operator != OP_PIPE && s.Operator != OP_ARG && s.Operator != OP_AP {
+	if s.Negated && s.Operator != OP_AP {
 		s.Negated = false
 		switch s.Operator {
 		case OP_EQ:
@@ -517,7 +507,7 @@ func Parse(tokens []Token) (*Clause, error) {
 				stmt := Statement{Category: tokToCat(token.Type)}
 				clause.Statements = append(clause.Statements, stmt)
 			}
-		case TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT, TOK_OP_PIPE, TOK_OP_ARG:
+		case TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT:
 			if !prevToken.Type.isCategory() {
 				return nil, &TokenError{
 					got:      token,

@@ -22,8 +22,6 @@ const (
 	TOK_OP_LE        = query.TOK_OP_LE
 	TOK_OP_GE        = query.TOK_OP_GE
 	TOK_OP_GT        = query.TOK_OP_GT
-	TOK_OP_PIPE      = query.TOK_OP_PIPE
-	TOK_OP_ARG       = query.TOK_OP_ARG
 	TOK_CAT_TITLE    = query.TOK_CAT_TITLE
 	TOK_CAT_AUTHOR   = query.TOK_CAT_AUTHOR
 	TOK_CAT_DATE     = query.TOK_CAT_DATE
