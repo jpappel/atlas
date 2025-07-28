@@ -107,7 +107,31 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				}
 			}
 
-			if cat.IsSet() && op != OP_AP {
+			if op == OP_RE {
+				idx := 0
+				for _, stmt := range opStmts {
+					b.WriteString("( ")
+					b.WriteString(catStr)
+					b.WriteString("IS NOT NULL AND ")
+					if stmt.Negated {
+						b.WriteString("NOT ")
+					}
+					b.WriteString(catStr)
+					b.WriteString(opStr)
+					arg, ok := stmt.Value.buildCompile(b)
+					b.WriteString(" )")
+					if ok {
+						args = append(args, arg)
+					}
+					b.WriteByte(' ')
+					if idx != len(opStmts)-1 {
+						b.WriteString(delim)
+						b.WriteByte(' ')
+					}
+					idx++
+					sCount++
+				}
+			} else if cat.IsSet() && op != OP_AP {
 				b.WriteString(catStr)
 				b.WriteString(opStr)
 				b.WriteByte('(')
@@ -159,30 +183,6 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 					fmt.Fprint(b, start.Unix(), " ")
 					b.WriteString("AND ")
 					fmt.Fprint(b, end.Unix(), " ")
-					if idx != len(opStmts)-1 {
-						b.WriteString(delim)
-						b.WriteByte(' ')
-					}
-					idx++
-					sCount++
-				}
-			} else if op == OP_RE {
-				idx := 0
-				for _, stmt := range opStmts {
-					b.WriteString("( ")
-					b.WriteString(catStr)
-					b.WriteString("IS NOT NULL AND ")
-					if stmt.Negated {
-						b.WriteString("NOT ")
-					}
-					b.WriteString(catStr)
-					b.WriteString(opStr)
-					arg, ok := stmt.Value.buildCompile(b)
-					b.WriteString(" )")
-					if ok {
-						args = append(args, arg)
-					}
-					b.WriteByte(' ')
 					if idx != len(opStmts)-1 {
 						b.WriteString(delim)
 						b.WriteByte(' ')
