@@ -519,7 +519,7 @@ out:
 				return false, fmt.Errorf("Error occured while excuting query: %s", err)
 			}
 
-			_, err = query.DefaultOutput{}.OutputTo(w, slices.Collect(maps.Values(results)))
+			_, err = query.YamlOutput{}.OutputTo(w, slices.Collect(maps.Values(results)))
 			if err != nil {
 				return false, fmt.Errorf("Can't output results: %s", err)
 			}

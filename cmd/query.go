@@ -23,7 +23,7 @@ type QueryFlags struct {
 
 func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFormat string) {
 	// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
-	fs.Func("outFormat", "output `format` for queries (default, json, pathonly, custom)",
+	fs.Func("outFormat", "output `format` for queries (default, json, yaml, pathonly, custom)",
 		func(arg string) error {
 			switch arg {
 			case "default":
@@ -32,6 +32,9 @@ func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 			case "json":
 				flags.Outputer = query.JsonOutput{}
 				return nil
+			case "yaml":
+				flags.Outputer = query.YamlOutput{}
+				return nil
 			case "pathonly":
 				flags.Outputer, _ = query.NewCustomOutput("%p", dateFormat, "\n", "")
 				return nil
@@ -39,8 +42,9 @@ func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 				var err error
 				flags.Outputer, err = query.NewCustomOutput(flags.CustomFormat, dateFormat, flags.DocumentSeparator, flags.ListSeparator)
 				return err
+			default:
+				return fmt.Errorf("Unrecognized output format: %s", arg)
 			}
-			return fmt.Errorf("Unrecognized output format: %s", arg)
 		})
 
 	fs.StringVar(&flags.SortBy, "sortBy", "", "category to sort by (path,title,date,filetime,meta)")

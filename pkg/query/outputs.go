@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/goccy/go-yaml"
 	"github.com/jpappel/atlas/pkg/index"
 )
 
@@ -37,6 +38,7 @@ type Outputer interface {
 
 type DefaultOutput struct{}
 type JsonOutput struct{}
+type YamlOutput struct{}
 type CustomOutput struct {
 	stringTokens   []string
 	tokens         []OutputToken
@@ -49,6 +51,7 @@ type CustomOutput struct {
 var _ Outputer = &DefaultOutput{}
 var _ Outputer = &JsonOutput{}
 var _ Outputer = &CustomOutput{}
+var _ Outputer = &YamlOutput{}
 
 // Returns "<path> <title> <date> authors:<authors...> tags:<tags>"
 // and a nil error
@@ -147,6 +150,40 @@ func (o JsonOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	return w.Write(b)
+}
+
+func (o YamlOutput) OutputOne(doc *index.Document) (string, error) {
+	b, err := doc.MarshalYAML()
+	if err != nil {
+		return "", err
+	}
+
+	return string(b), nil
+}
+
+func (o YamlOutput) OutputOneTo(w io.Writer, doc *index.Document) (int, error) {
+	b, err := doc.MarshalYAML()
+	if err != nil {
+		return 0, err
+	}
+	return w.Write(b)
+}
+
+func (o YamlOutput) Output(docs []*index.Document) (string, error) {
+	b, err := yaml.Marshal(docs)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (o YamlOutput) OutputTo(w io.Writer, docs []*index.Document) (int, error) {
+	b, err := yaml.Marshal(docs)
+	if err != nil {
+		return 0, err
+	}
+
 	return w.Write(b)
 }
 

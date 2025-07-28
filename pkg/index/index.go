@@ -70,6 +70,20 @@ func (idx Index) String() string {
 }
 
 var _ yaml.NodeUnmarshaler = (*Document)(nil)
+var _ yaml.BytesMarshaler = (*Document)(nil)
+
+func (doc *Document) MarshalYAML() ([]byte, error) {
+	return yaml.Marshal(yaml.MapSlice{
+		{Key: "path", Value: doc.Path},
+		{Key: "title", Value: doc.Title},
+		{Key: "date", Value: doc.Date},
+		{Key: "filetime", Value: doc.FileTime},
+		{Key: "authors", Value: doc.Authors},
+		{Key: "tags", Value: doc.Tags},
+		{Key: "links", Value: doc.Links},
+		{Key: "meta", Value: doc.OtherMeta},
+	})
+}
 
 func (doc *Document) UnmarshalYAML(node ast.Node) error {
 	// parse top level fields
