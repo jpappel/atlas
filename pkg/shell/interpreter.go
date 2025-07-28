@@ -86,6 +86,7 @@ var optimizations = []string{
 	"contradictions",
 	"compact",
 	"strictEq",
+	"mergeregex",
 }
 
 var commands = map[string]ITokType{
@@ -459,6 +460,8 @@ out:
 				o.Compact()
 			case "strictEq":
 				o.StrictEquality()
+			case "mergeregex":
+				o.MergeRegex()
 			default:
 				suggestion, ok := util.Nearest(
 					optName,
@@ -781,6 +784,7 @@ func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "    contradictions                    - zero contradicting statements and clauses")
 	fmt.Fprintln(w, "    strictEq                          - zero fuzzy/range statements when an eq is present")
 	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
+	fmt.Fprintln(w, "    mergeregex                        - merge regexes")
 	fmt.Fprintln(w, "compile (clause)                      - compile clause into query")
 	fmt.Fprintln(w, "execute (artifact)                    - excute the compiled query against the connected database")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")

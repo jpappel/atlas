@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"slices"
 	"strings"
 	"sync"
@@ -52,7 +53,6 @@ func (o Optimizer) Optimize(level int) {
 	if level < 0 {
 		return
 	} else if level == 0 {
-		// TODO: determine smarter level determination strategy
 		level = o.root.Depth()
 	}
 
@@ -63,6 +63,7 @@ func (o Optimizer) Optimize(level int) {
 		o.StrictEquality()
 		o.Tighten()
 		o.Contradictions()
+		o.MergeRegex()
 		// parallel + serial
 		o.Tidy()
 		// purely serial
@@ -322,6 +323,66 @@ func (o Optimizer) StrictEquality() {
 					}
 				}
 			}
+		}
+	})
+}
+
+// Merge regular within a clause
+func (o *Optimizer) MergeRegex() {
+	if !o.isSorted {
+		o.SortStatements()
+	}
+
+	pool := &sync.Pool{}
+	pool.New = func() any {
+		return &bytes.Buffer{}
+	}
+
+	o.parallel(func(c *Clause) {
+		if c.Operator != COP_OR {
+			return
+		}
+
+		buf := pool.Get().(*bytes.Buffer)
+		defer pool.Put(buf)
+		defer buf.Reset()
+		sortChanged := false
+		for _, catStmts := range c.Statements.CategoryPartition() {
+			for op, opStmts := range catStmts.OperatorPartition() {
+				if op != OP_RE {
+					continue
+				}
+
+				for _, stmts := range opStmts.NegatedPartition() {
+					if len(stmts) <= 1 {
+						continue
+					}
+					sortChanged = true
+
+					for i, stmt := range stmts {
+						if i == 0 {
+							buf.WriteByte('(')
+							buf.WriteString(stmt.Value.(StringValue).S)
+							buf.WriteByte('|')
+						} else if i == len(stmts)-1 {
+							buf.WriteString(stmt.Value.(StringValue).S)
+							buf.WriteByte(')')
+							stmts[i] = Statement{}
+						} else {
+							buf.WriteString(stmt.Value.(StringValue).S)
+							buf.WriteByte('|')
+							stmts[i] = Statement{}
+						}
+					}
+					stmts[0].Value = StringValue{S: buf.String()}
+					buf.Reset()
+				}
+
+				break
+			}
+		}
+		if sortChanged {
+			o.isSorted = false
 		}
 	})
 }

@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
 
 type Query struct {
@@ -51,7 +52,7 @@ func NewQuery(filename string) *Query {
 
 func NewDB(filename string) *sql.DB {
 	connStr := "file:" + filename + "?_fk=true&_journal=WAL"
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sql.Open("sqlite3_regex", connStr)
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +65,7 @@ func NewDB(filename string) *sql.DB {
 }
 
 func NewMemDB() *sql.DB {
-	db, err := sql.Open("sqlite3", ":memory:?_fk=true")
+	db, err := sql.Open("sqlite3_regex", ":memory:?_fk=true")
 	if err != nil {
 		panic(err)
 	}
@@ -419,4 +420,18 @@ func (q Query) Execute(artifact query.CompilationArtifact) (map[string]*index.Do
 	}
 
 	return f.docs, nil
+}
+
+func regex(re, s string) (bool, error) {
+	return regexp.MatchString(re, s)
+}
+
+func init() {
+	sql.Register("sqlite3_regex",
+		&sqlite3.SQLiteDriver{
+			ConnectHook: func(sc *sqlite3.SQLiteConn) error {
+				return sc.RegisterFunc("regexp", regex, true)
+			},
+		},
+	)
 }

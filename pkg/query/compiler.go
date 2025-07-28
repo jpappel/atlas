@@ -93,6 +93,8 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 			case OP_LT:
 				// NOTE: doesn't raise compiler error if operator used on invalid category
 				opStr = "< "
+			case OP_RE:
+				opStr = "REGEXP "
 			case OP_NE:
 				if cat.IsSet() {
 					opStr = "NOT IN "
@@ -157,6 +159,30 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 					fmt.Fprint(b, start.Unix(), " ")
 					b.WriteString("AND ")
 					fmt.Fprint(b, end.Unix(), " ")
+					if idx != len(opStmts)-1 {
+						b.WriteString(delim)
+						b.WriteByte(' ')
+					}
+					idx++
+					sCount++
+				}
+			} else if op == OP_RE {
+				idx := 0
+				for _, stmt := range opStmts {
+					b.WriteString("( ")
+					b.WriteString(catStr)
+					b.WriteString("IS NOT NULL AND ")
+					if stmt.Negated {
+						b.WriteString("NOT ")
+					}
+					b.WriteString(catStr)
+					b.WriteString(opStr)
+					arg, ok := stmt.Value.buildCompile(b)
+					b.WriteString(" )")
+					if ok {
+						args = append(args, arg)
+					}
+					b.WriteByte(' ')
 					if idx != len(opStmts)-1 {
 						b.WriteString(delim)
 						b.WriteByte(' ')

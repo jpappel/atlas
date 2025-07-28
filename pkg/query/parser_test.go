@@ -26,6 +26,7 @@ const (
 	OP_LE      = query.OP_LE
 	OP_GE      = query.OP_GE
 	OP_GT      = query.OP_GT
+	OP_RE      = query.OP_RE
 )
 
 func TestParse(t *testing.T) {

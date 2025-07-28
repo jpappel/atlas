@@ -647,3 +647,75 @@ func TestOptimizer_Tighten(t *testing.T) {
 		})
 	}
 }
+
+func TestOptimizer_MergeRegex(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *query.Clause
+		want query.Clause
+	}{
+		{
+			"only positve",
+			&query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_RE, Value: query.StringValue{"a"}},
+					{Category: CAT_TITLE, Operator: OP_RE, Value: query.StringValue{"b"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_RE, Value: query.StringValue{"(a|b)"}},
+				},
+			},
+		},
+		{
+			"multiple categories",
+			&query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_RE, Value: query.StringValue{"a"}},
+					{Category: CAT_TITLE, Operator: OP_RE, Value: query.StringValue{"b"}},
+					{Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"c"}},
+					{Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"d"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TITLE, Operator: OP_RE, Value: query.StringValue{"(a|b)"}},
+					{Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"(c|d)"}},
+				},
+			},
+		},
+		{
+			"mixed negations",
+			&query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"a"}},
+					{Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"b"}},
+					{Negated: true, Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"c"}},
+					{Negated: true, Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"d"}},
+				},
+			},
+			query.Clause{
+				Operator: query.COP_OR,
+				Statements: []query.Statement{
+					{Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"(a|b)"}},
+					{Negated: true, Category: CAT_TAGS, Operator: OP_RE, Value: query.StringValue{"(c|d)"}},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := query.NewOptimizer(tt.c, WORKERS)
+			o.MergeRegex()
+			o.Tidy()
+
+			clauseEqTest(t, tt.c, &tt.want)
+		})
+	}
+}

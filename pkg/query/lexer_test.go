@@ -22,6 +22,7 @@ const (
 	TOK_OP_LE        = query.TOK_OP_LE
 	TOK_OP_GE        = query.TOK_OP_GE
 	TOK_OP_GT        = query.TOK_OP_GT
+	TOK_OP_RE        = query.TOK_OP_RE
 	TOK_CAT_TITLE    = query.TOK_CAT_TITLE
 	TOK_CAT_AUTHOR   = query.TOK_CAT_AUTHOR
 	TOK_CAT_DATE     = query.TOK_CAT_DATE
@@ -77,7 +78,7 @@ func TestLex(t *testing.T) {
 			{Type: TOK_CLAUSE_END},
 			{Type: TOK_CLAUSE_END},
 		}},
-		{"nested clauses", "a:a (or t:b t!=c) or d<=01010001 and -T~foo", []Token{
+		{"nested clauses", "a:a (or t:b t!=c) or d<=01010001 and -T~foo t!re!bar", []Token{
 			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
 			{TOK_CAT_AUTHOR, "a"}, {TOK_OP_AP, ":"}, {TOK_VAL_STR, "a"},
 			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_OR, "or"},
@@ -88,6 +89,7 @@ func TestLex(t *testing.T) {
 			{TOK_CAT_DATE, "d"}, {TOK_OP_LE, "<="}, {TOK_VAL_DATETIME, "01010001"},
 			{Type: TOK_CLAUSE_START}, {TOK_CLAUSE_AND, "and"},
 			{TOK_OP_NEG, "-"}, {TOK_CAT_TITLE, "T"}, {TOK_OP_AP, "~"}, {TOK_VAL_STR, "foo"},
+			{TOK_CAT_TAGS, "t"}, {TOK_OP_RE, "!re!"}, {TOK_VAL_STR, "bar"},
 			{Type: TOK_CLAUSE_END},
 			{Type: TOK_CLAUSE_END},
 			{Type: TOK_CLAUSE_END},

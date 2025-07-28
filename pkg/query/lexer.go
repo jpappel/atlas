@@ -29,7 +29,8 @@ const (
 	TOK_OP_LT  // less than
 	TOK_OP_LE  // less than or equal
 	TOK_OP_GE  // greater than or equal
-	TOK_OP_GT  // greaterthan
+	TOK_OP_GT  // greater than
+	TOK_OP_RE  // regex match
 	// categories
 	TOK_CAT_PATH
 	TOK_CAT_TITLE
@@ -67,6 +68,8 @@ func (tokType queryTokenType) String() string {
 		return "Equal"
 	case TOK_OP_AP:
 		return "Approximate"
+	case TOK_OP_RE:
+		return "Regular Expression"
 	case TOK_OP_NE:
 		return "Not Equal"
 	case TOK_OP_LT:
@@ -118,16 +121,18 @@ func (tokType queryTokenType) Any(expected ...queryTokenType) bool {
 	return slices.Contains(expected, tokType)
 }
 
-func (t queryTokenType) isClause() bool {
-	return t == TOK_CLAUSE_OR || t == TOK_CLAUSE_AND || t == TOK_CLAUSE_START || t == TOK_CLAUSE_END
-}
-
 func (t queryTokenType) isCategory() bool {
 	return t.Any(TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META)
 }
-func (t queryTokenType) isOperation() bool {
+
+func (t queryTokenType) isDateOperation() bool {
 	return t.Any(TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT)
 }
+
+func (t queryTokenType) isStringOperation() bool {
+	return t.Any(TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_RE)
+}
+
 func (t queryTokenType) isValue() bool {
 	return t == TOK_VAL_STR || t == TOK_VAL_DATETIME
 }
@@ -233,6 +238,8 @@ func tokenizeOperation(s string) Token {
 		t.Type = TOK_OP_LT
 	case ">":
 		t.Type = TOK_OP_GT
+	case "!re!":
+		t.Type = TOK_OP_RE
 	}
 
 	return t
@@ -321,7 +328,7 @@ func TokensStringify(tokens []Token) string {
 func init() {
 	negPattern := `(?<negation>-?)`
 	categoryPattern := `(?<category>T|p(?:ath)?|a(?:uthor)?|d(?:ate)?|f(?:iletime)?|t(?:ags|itle)?|l(?:inks)?|m(?:eta)?)`
-	opPattern := `(?<operator>!=|<=|>=|=|:|~|<|>)`
+	opPattern := `(?<operator>!re!|!=|<=|>=|=|:|~|<|>)`
 	valPattern := `(?<value>".*?"|\S*[^\s\)])`
 	statementPattern := `(?<statement>` + negPattern + categoryPattern + opPattern + valPattern + `)`
 	unknownPattern := `(?<unknown>\S*".*?"[^\s)]*|\S*[^\s\)])`

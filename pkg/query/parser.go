@@ -36,6 +36,7 @@ const (
 	OP_LE             // less than or equal
 	OP_GE             // greater than or equal
 	OP_GT             // greater than
+	OP_RE             // regular expresion
 )
 
 type clauseOperator int16
@@ -165,7 +166,7 @@ func (t catType) String() string {
 }
 
 func (t opType) IsFuzzy() bool {
-	return t == OP_AP || t.IsOrder()
+	return t == OP_AP || t == OP_RE || t.IsOrder()
 }
 
 func (t opType) IsOrder() bool {
@@ -188,6 +189,8 @@ func (t opType) String() string {
 		return "Greater Than or Equal"
 	case OP_GT:
 		return "Greater Than"
+	case OP_RE:
+		return "Regular Expression"
 	default:
 		return "Invalid"
 	}
@@ -234,6 +237,8 @@ func tokToOp(t queryTokenType) opType {
 		return OP_GE
 	case TOK_OP_GT:
 		return OP_GT
+	case TOK_OP_RE:
+		return OP_RE
 	default:
 		return OP_UNKNOWN
 	}
@@ -241,7 +246,7 @@ func tokToOp(t queryTokenType) opType {
 
 // Apply negation to a statements operator
 func (s *Statement) Simplify() {
-	if s.Negated && s.Operator != OP_AP {
+	if s.Negated && s.Operator != OP_AP && s.Operator != OP_RE {
 		s.Negated = false
 		switch s.Operator {
 		case OP_EQ:
@@ -324,23 +329,15 @@ func (s Statements) NegatedPartition() iter.Seq2[bool, Statements] {
 	}
 
 	return func(yield func(bool, Statements) bool) {
-		firstNegated := -1
-		for i, stmt := range s {
-			if stmt.Negated {
-				firstNegated = i
-			}
-		}
-
-		if firstNegated > 0 {
-			if !yield(false, s[:firstNegated]) {
-				return
-			} else if !yield(true, s[firstNegated:]) {
-				return
-			}
-		} else {
-			if !yield(false, s) {
-				return
-			}
+		firstNegated := slices.IndexFunc(s, func(stmt Statement) bool { return stmt.Negated })
+		if firstNegated == -1 {
+			yield(false, s)
+			return
+		} else if firstNegated == 0 {
+			yield(true, s)
+			return
+		} else if !yield(false, s[:firstNegated]) {
+		} else if !yield(true, s[firstNegated:]) {
 		}
 	}
 }
@@ -507,7 +504,7 @@ func Parse(tokens []Token) (*Clause, error) {
 				stmt := Statement{Category: tokToCat(token.Type)}
 				clause.Statements = append(clause.Statements, stmt)
 			}
-		case TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT:
+		case TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT, TOK_OP_RE:
 			if !prevToken.Type.isCategory() {
 				return nil, &TokenError{
 					got:      token,
@@ -518,21 +515,21 @@ func Parse(tokens []Token) (*Clause, error) {
 
 			clause.Statements[len(clause.Statements)-1].Operator = tokToOp(token.Type)
 		case TOK_VAL_STR:
-			if !prevToken.Type.isOperation() {
+			if !prevToken.Type.isStringOperation() {
 				return nil, &TokenError{
 					got:      token,
 					gotPrev:  prevToken,
-					wantPrev: "operation",
+					wantPrev: "string operation",
 				}
 			}
 
 			clause.Statements[len(clause.Statements)-1].Value = StringValue{token.Value}
 		case TOK_VAL_DATETIME:
-			if !prevToken.Type.isOperation() {
+			if !prevToken.Type.isDateOperation() {
 				return nil, &TokenError{
 					got:      token,
 					gotPrev:  prevToken,
-					wantPrev: "operation",
+					wantPrev: "date operation",
 				}
 			}
 
