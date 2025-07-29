@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
@@ -128,15 +129,18 @@ func (s *UnixServer) handleConn(conn *net.UnixConn, id uint64) {
 			break
 		}
 
-		docs, err := s.Db.Execute(artifact)
+		ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+		docs, err := s.Db.Execute(ctx, artifact)
 		if err != nil {
 			slog.Warn("Failed to execute query",
 				slog.String("query", queryTxt),
 				slog.String("err", err.Error()),
 			)
 			s.writeError(conn, "query execution error")
+			cancel()
 			break
 		}
+		cancel()
 
 		slog.Debug("Sending results")
 		s.writeResults(conn, docs)

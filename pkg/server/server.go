@@ -63,7 +63,7 @@ func NewMux(db *data.Query) *http.ServeMux {
 			return
 		}
 
-		pathDocs, err := db.Execute(artifact)
+		pathDocs, err := db.Execute(r.Context(), artifact)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error executing query"))

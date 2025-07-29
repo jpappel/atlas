@@ -106,9 +106,9 @@ func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 		// switch in order to appease gopls...
 		switch iFlags.Subcommand {
 		case "build":
-			err = db.Put(idx)
+			err = db.Put(context.Background(), idx)
 		case "update":
-			err = db.Update(idx)
+			err = db.Update(context.Background(), idx)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error modifying index:", err)

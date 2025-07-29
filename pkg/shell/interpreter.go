@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -514,7 +515,7 @@ out:
 				return true, errors.New("Type corruption during compilation, expected query.CompilationArtifact")
 			}
 
-			results, err := inter.querier.Execute(artifact)
+			results, err := inter.querier.Execute(context.Background(), artifact)
 			if err != nil {
 				return false, fmt.Errorf("Error occured while excuting query: %s", err)
 			}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -82,7 +83,7 @@ func RunQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery
 		return 1
 	}
 
-	results, err := db.Execute(artifact)
+	results, err := db.Execute(context.Background(), artifact)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to execute query: ", err)
 		return 1

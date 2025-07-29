@@ -78,8 +78,7 @@ func NewMemDB() *sql.DB {
 }
 
 func createSchema(db *sql.DB) error {
-	ctx := context.TODO()
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
@@ -293,9 +292,7 @@ func (q Query) Close() error {
 }
 
 // Create an index
-func (q Query) Get(indexRoot string) (*index.Index, error) {
-	ctx := context.TODO()
-
+func (q Query) Get(ctx context.Context, indexRoot string) (*index.Index, error) {
 	f := FillMany{Db: q.db}
 	docs, err := f.Get(ctx)
 	if err != nil {
@@ -312,9 +309,7 @@ func (q Query) Get(indexRoot string) (*index.Index, error) {
 }
 
 // Write from index to database
-func (q Query) Put(idx index.Index) error {
-	ctx := context.TODO()
-
+func (q Query) Put(ctx context.Context, idx index.Index) error {
 	p, err := NewPutMany(ctx, q.db, idx.Documents)
 	if err != nil {
 		return err
@@ -324,14 +319,12 @@ func (q Query) Put(idx index.Index) error {
 }
 
 // Update database with values from index, removes entries for deleted files
-func (q Query) Update(idx index.Index) error {
-	ctx := context.TODO()
+func (q Query) Update(ctx context.Context, idx index.Index) error {
 	u := UpdateMany{Db: q.db, PathDocs: idx.Documents}
 	return u.Update(ctx)
 }
 
-func (q Query) GetDocument(path string) (*index.Document, error) {
-	ctx := context.TODO()
+func (q Query) GetDocument(ctx context.Context, path string) (*index.Document, error) {
 	f := Fill{Path: path, Db: q.db}
 	return f.Get(ctx)
 }
@@ -385,8 +378,7 @@ func (q Query) PeriodicOptimize(ctx context.Context, d time.Duration) {
 	}
 }
 
-func (q Query) Execute(artifact query.CompilationArtifact) (map[string]*index.Document, error) {
-	ctx := context.TODO()
+func (q Query) Execute(ctx context.Context, artifact query.CompilationArtifact) (map[string]*index.Document, error) {
 	f := FillMany{
 		Db:   q.db,
 		docs: make(map[string]*index.Document),
