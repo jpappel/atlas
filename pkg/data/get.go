@@ -3,13 +3,12 @@ package data
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/jpappel/atlas/pkg/index"
 )
 
-// TODO: rename struct
-//
 // Use to build a document from a database connection
 type Fill struct {
 	Path string
@@ -18,8 +17,6 @@ type Fill struct {
 	doc  *index.Document
 }
 
-// TODO: rename struct
-//
 // Use to build documents and aliases from a database connection
 type FillMany struct {
 	docs map[string]*index.Document
@@ -108,8 +105,22 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 			return err
 		}
 		defer rows.Close()
-	} else {
-		// TODO: check if rows.ColumnTypes() matches expected
+	} else if cols, err := rows.ColumnTypes(); err != nil {
+		return err
+	} else if len(cols) != 6 {
+		return fmt.Errorf("Not enough columns to fill documents with")
+	} else if t := cols[0].DatabaseTypeName(); t != "INTEGER" {
+		return fmt.Errorf("Expected integer for id column fill, got %s", t)
+	} else if t := cols[1].DatabaseTypeName(); t != "TEXT" {
+		return fmt.Errorf("Expected text for path column fill, got %s", t)
+	} else if t := cols[2].DatabaseTypeName(); t != "TEXT" {
+		return fmt.Errorf("Expected text for title column fill, got %s", t)
+	} else if t := cols[3].DatabaseTypeName(); t != "INT" {
+		return fmt.Errorf("Expected integer for date column fill, got %s", t)
+	} else if t := cols[4].DatabaseTypeName(); t != "INT" {
+		return fmt.Errorf("Expected integer for filetime column fill, got %s", t)
+	} else if t := cols[5].DatabaseTypeName(); t != "BLOB" {
+		return fmt.Errorf("Expected text for meta column fill, got %s", t)
 	}
 
 	var id int

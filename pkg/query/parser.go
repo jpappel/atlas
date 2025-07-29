@@ -70,7 +70,6 @@ const (
 	VAL_DATETIME
 )
 
-// TODO: rename
 type Valuer interface {
 	Type() valuerType
 	Compare(Valuer) int

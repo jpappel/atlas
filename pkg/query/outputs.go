@@ -15,7 +15,6 @@ const DefaultOutputFormat string = "%p %T %d authors:%a tags:%t"
 
 type OutputToken uint64
 
-// TODO: support long token names
 const (
 	OUT_TOK_STR      OutputToken = iota
 	OUT_TOK_PATH                 // %p %path
@@ -28,7 +27,6 @@ const (
 	OUT_TOK_META                 // %m %meta
 )
 
-// TODO: change interface to use byte slices
 type Outputer interface {
 	OutputOne(doc *index.Document) (string, error)
 	OutputOneTo(w io.Writer, doc *index.Document) (int, error)

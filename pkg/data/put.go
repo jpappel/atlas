@@ -9,7 +9,6 @@ import (
 	"github.com/jpappel/atlas/pkg/index"
 )
 
-// TODO: rename struct
 type Put struct {
 	Id  int64
 	Doc index.Document
@@ -17,7 +16,6 @@ type Put struct {
 	db  *sql.DB
 }
 
-// TODO: rename struct
 type PutMany struct {
 	Docs     map[int64]*index.Document
 	pathDocs map[string]*index.Document

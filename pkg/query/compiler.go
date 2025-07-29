@@ -34,8 +34,6 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 
 	sCount := 0
 	for cat, catStmts := range s.CategoryPartition() {
-		// TODO: make sure sorted
-		// TODO: loop over partitions
 		if len(catStmts) == 0 {
 			continue
 		}

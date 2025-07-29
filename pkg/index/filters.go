@@ -11,8 +11,6 @@ import (
 	"strings"
 )
 
-// TODO: add support for lua filters
-
 type DocFilter struct {
 	Name   string
 	Filter func(InfoPath, io.ReadSeeker) bool

@@ -213,7 +213,6 @@ func (doc Document) Equal(other Document) bool {
 }
 
 func visit(file InfoPath, visitQueue chan<- InfoPath, filterQueue chan<- InfoPath, ignoreHidden bool, wg *sync.WaitGroup) {
-	// TODO: check if symlink, and handle appropriately
 	// TODO: extract error out of function
 
 	if ignoreHidden && path.Base(file.Path)[0] == '.' {
