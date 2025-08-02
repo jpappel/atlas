@@ -137,7 +137,7 @@ func main() {
 	case "index", "i":
 		exitCode = int(cmd.RunIndex(globalFlags, indexFlags, querier))
 	case "server":
-		exitCode = int(cmd.RunServer(serverFlags, querier))
+		exitCode = int(cmd.RunServer(globalFlags, serverFlags, querier))
 	case "completions":
 		lang := completionsFs.Arg(0)
 		switch lang {

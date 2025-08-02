@@ -28,14 +28,14 @@ func SetupServerFlags(args []string, fs *flag.FlagSet, flags *ServerFlags) {
 	fs.Parse(args)
 }
 
-func RunServer(sFlags ServerFlags, db *data.Query) byte {
+func RunServer(gFlags GlobalFlags, sFlags ServerFlags, db *data.Query) byte {
 
 	var addr string
 	var s server.Server
 	if after, ok := strings.CutPrefix(sFlags.Address, "unix:"); ok {
 		slog.Debug("Preparing unix domain socket")
 		addr = after
-		s = &server.UnixServer{Addr: addr, Db: db}
+		s = &server.UnixServer{Addr: addr, Db: db, WorkersPerConn: gFlags.NumWorkers}
 	} else {
 		slog.Debug("Preparing http server")
 		addr = fmt.Sprintf("%s:%d", sFlags.Address, sFlags.Port)

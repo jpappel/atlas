@@ -73,7 +73,7 @@ func (s *UnixServer) writeError(conn *net.UnixConn, msg string) {
 	conn.Write([]byte{END_MSG})
 }
 
-func (s *UnixServer) writeResults(conn *net.UnixConn, docs map[string]*index.Document) {
+func (s *UnixServer) writeResults(conn *net.UnixConn, docs map[string]*index.Document) error {
 	defer conn.Write([]byte{END_MSG})
 	conn.Write(fmt.Appendf([]byte{START_HEADER}, "Num Docs: %d", len(docs)))
 	conn.Write([]byte{START_BODY})
@@ -85,9 +85,11 @@ func (s *UnixServer) writeResults(conn *net.UnixConn, docs map[string]*index.Doc
 			slog.Error("Failed to write doc",
 				slog.String("err", err.Error()),
 			)
-			break
+			return err
 		}
 	}
+
+	return nil
 }
 
 func (s *UnixServer) handleConn(conn *net.UnixConn, id uint64) {
@@ -100,7 +102,7 @@ func (s *UnixServer) handleConn(conn *net.UnixConn, id uint64) {
 	buf := s.bufPool.Get().([]byte)
 	defer s.bufPool.Put(buf)
 	defer slog.Info("Closing connection",
-		slog.String("local", conn.LocalAddr().String()),
+		slog.Uint64("connId", id),
 	)
 
 	for {
@@ -143,7 +145,10 @@ func (s *UnixServer) handleConn(conn *net.UnixConn, id uint64) {
 		cancel()
 
 		slog.Debug("Sending results")
-		s.writeResults(conn, docs)
+		if err := s.writeResults(conn, docs); err != nil {
+			break
+		}
+		slog.Info("Processed query", slog.Uint64("connId", id))
 	}
 }
 
