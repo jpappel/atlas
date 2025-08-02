@@ -23,7 +23,7 @@ func TestUpdate_Update(t *testing.T) {
 			"update on empty",
 			func(t *testing.T) *sql.DB {
 				t.Helper()
-				return data.NewMemDB()
+				return data.NewMemDB("test")
 			},
 			index.Document{
 				Path:     "/file",
@@ -40,7 +40,7 @@ func TestUpdate_Update(t *testing.T) {
 			"update on existing",
 			func(t *testing.T) *sql.DB {
 				t.Helper()
-				db := data.NewMemDB()
+				db := data.NewMemDB("test")
 				p := data.NewPut(db, index.Document{
 					Path:     "/file",
 					Title:    "A file",
@@ -105,7 +105,7 @@ func TestUpdateMany_Update(t *testing.T) {
 		{
 			"additions",
 			func(t *testing.T) *sql.DB {
-				return data.NewMemDB()
+				return data.NewMemDB("test")
 			},
 			map[string]*index.Document{
 				"/afile": {
@@ -132,7 +132,7 @@ func TestUpdateMany_Update(t *testing.T) {
 		{
 			"delete",
 			func(t *testing.T) *sql.DB {
-				db := data.NewMemDB()
+				db := data.NewMemDB("test")
 
 				docs := map[string]*index.Document{
 					"/afile": {
@@ -180,7 +180,7 @@ func TestUpdateMany_Update(t *testing.T) {
 		{
 			"update",
 			func(t *testing.T) *sql.DB {
-				db := data.NewMemDB()
+				db := data.NewMemDB("test")
 
 				docs := map[string]*index.Document{
 					"/afile": {

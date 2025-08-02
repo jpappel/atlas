@@ -12,7 +12,7 @@ import (
 
 func singleDoc(t *testing.T) *sql.DB {
 	t.Helper()
-	db := data.NewMemDB()
+	db := data.NewMemDB("test")
 
 	if _, err := db.Exec(`
 	INSERT INTO Documents (path, title, date, fileTime)
@@ -68,7 +68,7 @@ func singleDoc(t *testing.T) *sql.DB {
 
 func multiDoc(t *testing.T) *sql.DB {
 	t.Helper()
-	db := data.NewMemDB()
+	db := data.NewMemDB("test")
 
 	if _, err := db.Exec(`
 	INSERT INTO Documents (path, title, date, fileTime)

@@ -21,7 +21,7 @@ func TestPut_Insert(t *testing.T) {
 			"insert on empty",
 			func(t *testing.T) *sql.DB {
 				t.Helper()
-				return data.NewMemDB()
+				return data.NewMemDB("test")
 			},
 			index.Document{
 				Path:     "/file",
@@ -73,7 +73,7 @@ func TestPutMany_Insert(t *testing.T) {
 			name: "insert on empty",
 			newDb: func(t *testing.T) *sql.DB {
 				t.Helper()
-				return data.NewMemDB()
+				return data.NewMemDB("test")
 			},
 			documents: map[string]*index.Document{
 				"/file": {

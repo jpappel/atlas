@@ -45,39 +45,45 @@ func BatchQuery[T any](query string, start string, val string, delim string, sto
 	return b.String(), args
 }
 
-func NewQuery(filename string) *Query {
-	query := &Query{NewDB(filename)}
+func NewQuery(filename string, version string) *Query {
+	query := &Query{NewDB(filename, version)}
 	return query
 }
 
-func NewDB(filename string) *sql.DB {
+func NewDB(filename string, version string) *sql.DB {
 	connStr := "file:" + filename + "?_fk=true&_journal=WAL"
 	db, err := sql.Open("sqlite3_regex", connStr)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := createSchema(db); err != nil {
+	var dbVersion string
+	row := db.QueryRow("SELECT key, value FROM Info WHERE key='version'")
+	if err := row.Scan(&dbVersion); err == nil {
+		return db
+	}
+
+	if err := createSchema(db, version); err != nil {
 		panic(err)
 	}
 
 	return db
 }
 
-func NewMemDB() *sql.DB {
+func NewMemDB(version string) *sql.DB {
 	db, err := sql.Open("sqlite3_regex", ":memory:?_fk=true")
 	if err != nil {
 		panic(err)
 	}
 
-	if err := createSchema(db); err != nil {
+	if err := createSchema(db, version); err != nil {
 		panic(err)
 	}
 
 	return db
 }
 
-func createSchema(db *sql.DB) error {
+func createSchema(db *sql.DB, version string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -276,8 +282,10 @@ func createSchema(db *sql.DB) error {
 		return err
 	}
 
-	if _, err = tx.Exec("INSERT OR IGNORE INTO Info (key, value, updated) VALUES (?,?,?)",
-		"created", "", time.Now().UTC().Unix(),
+	t := time.Now().UTC().Unix()
+	if _, err = tx.Exec("INSERT OR IGNORE INTO Info (key, value, updated) VALUES (?,?,?), (?,?,?)",
+		"created", "", t,
+		"version", version, t,
 	); err != nil {
 		tx.Rollback()
 		return err

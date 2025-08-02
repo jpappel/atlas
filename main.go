@@ -126,7 +126,7 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	querier := data.NewQuery(globalFlags.DBPath)
+	querier := data.NewQuery(globalFlags.DBPath, VERSION)
 
 	// command specific
 	var exitCode int
