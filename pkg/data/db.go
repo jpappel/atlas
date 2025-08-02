@@ -104,6 +104,7 @@ func createSchema(db *sql.DB, version string) error {
 	CREATE TABLE IF NOT EXISTS Documents(
 		id INTEGER PRIMARY KEY,
 		path TEXT UNIQUE NOT NULL,
+		headings TEXT,
 		title TEXT,
 		date INT,
 		fileTime INT,
@@ -257,6 +258,7 @@ func createSchema(db *sql.DB, version string) error {
 	SELECT
 		d.id AS docId,
 		d.path,
+		d.headings,
 		d.title,
 		d.date,
 		d.fileTime,
@@ -394,7 +396,7 @@ func (q Query) Execute(ctx context.Context, artifact query.CompilationArtifact) 
 	}
 
 	compiledQuery := fmt.Sprintf(`
-	SELECT DISTINCT docId, path, title, date, fileTime, meta
+	SELECT DISTINCT docId, path, headings, title, date, fileTime, meta
 	FROM Search
 	WHERE %s`, artifact.Query)
 

@@ -40,6 +40,7 @@ const (
 	TOK_CAT_TAGS
 	TOK_CAT_LINKS
 	TOK_CAT_META
+	// TODO: add headings
 	// values
 	TOK_VAL_STR
 	TOK_VAL_DATETIME

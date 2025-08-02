@@ -23,6 +23,7 @@ import (
 var ErrHeaderParse error = errors.New("Unable to parse YAML header")
 var linkRegex *regexp.Regexp
 
+// TODO: add headings field
 type Document struct {
 	Path      string    `yaml:"-" json:"path"`
 	Title     string    `yaml:"title" json:"title"`
@@ -41,6 +42,7 @@ type ParseOpts struct {
 	IgnoreDateError bool
 	IgnoreMetaError bool
 	IgnoreHidden    bool
+	// TODO: add IgnoreHeadings
 }
 
 type InfoPath struct {
@@ -75,6 +77,7 @@ var _ yaml.BytesMarshaler = (*Document)(nil)
 func (doc *Document) MarshalYAML() ([]byte, error) {
 	return yaml.Marshal(yaml.MapSlice{
 		{Key: "path", Value: doc.Path},
+		// TODO: add headings
 		{Key: "title", Value: doc.Title},
 		{Key: "date", Value: doc.Date},
 		{Key: "filetime", Value: doc.FileTime},
@@ -209,6 +212,7 @@ func (doc Document) Equal(other Document) bool {
 		}
 	}
 
+	// TODO: handle headings
 	return true
 }
 
@@ -377,6 +381,7 @@ func NewDocCmp(field string, reverse bool) (func(*Document, *Document) int, bool
 		return func(a, b *Document) int {
 			return descMod * strings.Compare(a.OtherMeta, b.OtherMeta)
 		}, true
+		// TODO: add headings
 	}
 
 	return nil, false
@@ -408,6 +413,7 @@ func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 		return nil, errors.Join(ErrHeaderParse, err)
 	}
 
+	// TODO: parse headings simultaneously with links
 	if opts.ParseLinks {
 		var buf bytes.Buffer
 		f.Seek(pos, io.SeekStart)
