@@ -103,17 +103,15 @@ func (p PutMany) Insert() error {
 
 func (p *Put) document() error {
 	title := sql.NullString{String: p.Doc.Title, Valid: p.Doc.Title != ""}
-
 	date := sql.NullInt64{Int64: p.Doc.Date.Unix(), Valid: !p.Doc.Date.IsZero()}
-
 	filetime := sql.NullInt64{Int64: p.Doc.FileTime.Unix(), Valid: !p.Doc.FileTime.IsZero()}
-
+	headings := sql.NullString{String: p.Doc.Headings, Valid: p.Doc.Headings != ""}
 	meta := sql.NullString{String: p.Doc.OtherMeta, Valid: p.Doc.OtherMeta != ""}
 
 	result, err := p.tx.Exec(`
-	INSERT INTO Documents(path, title, date, fileTime, meta)
-	VALUES (?,?,?,?,?)
-	`, p.Doc.Path, title, date, filetime, meta)
+	INSERT INTO Documents(path, title, date, fileTime, headings, meta)
+	VALUES (?,?,?,?,?,?)
+	`, p.Doc.Path, title, date, filetime, headings, meta)
 	if err != nil {
 		return err
 	}
@@ -127,33 +125,30 @@ func (p *Put) document() error {
 }
 
 func (p *PutMany) documents(ctx context.Context) error {
-	stmt, err := p.db.PrepareContext(ctx, `
-	INSERT INTO Documents(path, title, date, fileTime, meta)
-	VALUES (?,?,?,?,?)
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+	INSERT INTO Documents(path, title, date, fileTime, headings, meta)
+	VALUES (?,?,?,?,?,?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	tx, err := p.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	txStmt := tx.StmtContext(ctx, stmt)
-
 	// PERF: profile this, grabbing the docId here might save time by simpliyfying
 	//       future inserts
 	for _, doc := range p.pathDocs {
 		title := sql.NullString{String: doc.Title, Valid: doc.Title != ""}
 		date := sql.NullInt64{Int64: doc.Date.Unix(), Valid: !doc.Date.IsZero()}
-
 		filetime := sql.NullInt64{Int64: doc.FileTime.Unix(), Valid: !doc.FileTime.IsZero()}
-
+		headings := sql.NullString{String: doc.Headings, Valid: doc.Headings != ""}
 		meta := sql.NullString{String: doc.OtherMeta, Valid: doc.OtherMeta != ""}
 
-		res, err := txStmt.ExecContext(ctx, doc.Path, title, date, filetime, meta)
+		res, err := stmt.ExecContext(ctx, doc.Path, title, date, filetime, headings, meta)
 		if err != nil {
 			tx.Rollback()
 			return err

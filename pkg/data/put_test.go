@@ -30,6 +30,7 @@ func TestPut_Insert(t *testing.T) {
 				FileTime: time.Unix(2, 0),
 				Authors:  []string{"jp"},
 				Tags:     []string{"foo", "bar", "oof", "baz"},
+				Headings: "#A Heading\n## Another Heading",
 				Links:    []string{"link_1", "link_2", "link_3"},
 			},
 			nil,

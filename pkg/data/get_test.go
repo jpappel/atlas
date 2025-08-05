@@ -15,8 +15,8 @@ func singleDoc(t *testing.T) *sql.DB {
 	db := data.NewMemDB("test")
 
 	if _, err := db.Exec(`
-	INSERT INTO Documents (path, title, date, fileTime)
-	VALUES ("/file", "A file", 1, 2)
+	INSERT INTO Documents (path, title, date, fileTime, headings)
+	VALUES ("/file", "A file", 1, 2, '# A Heading' || CHAR(10))
 	`); err != nil {
 		t.Fatal("err inserting doc:", err)
 	}
@@ -71,8 +71,9 @@ func multiDoc(t *testing.T) *sql.DB {
 	db := data.NewMemDB("test")
 
 	if _, err := db.Exec(`
-	INSERT INTO Documents (path, title, date, fileTime)
-	VALUES ("/notes/anote.md", "A note", 1, 2), ("README.md", "read this file!", 3, 4)
+	INSERT INTO Documents (path, title, date, fileTime, headings)
+	VALUES ("/notes/anote.md", "A note", 1, 2, '#Top Level' || CHAR(10) || '## Second Level' || CHAR(10)),
+		   ("README.md", "read this file!", 3, 4, NULL)
 	`); err != nil {
 		t.Fatal("err inserting doc:", err)
 	}
@@ -143,6 +144,7 @@ func TestFill_Get(t *testing.T) {
 				Authors:  []string{"jp"},
 				Tags:     []string{"foo", "bar", "oof", "baz"},
 				Links:    []string{"link1", "link2"},
+				Headings: "# A Heading\n",
 			},
 			nil,
 		},
@@ -186,6 +188,7 @@ func TestFillMany_Get(t *testing.T) {
 					FileTime: time.Unix(2, 0),
 					Authors:  []string{"jp"},
 					Tags:     []string{"foo", "baz"},
+					Headings: "#Top Level\n## Second Level\n",
 					Links:    []string{"/home"},
 				},
 				"README.md": {

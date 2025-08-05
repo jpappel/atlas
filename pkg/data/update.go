@@ -129,18 +129,20 @@ func (u *Update) document() (bool, error) {
 
 	title := sql.NullString{String: u.Doc.Title, Valid: u.Doc.Title != ""}
 	date := sql.NullInt64{Int64: u.Doc.Date.Unix(), Valid: !u.Doc.Date.IsZero()}
+	headings := sql.NullString{String: u.Doc.Headings, Valid: u.Doc.Headings != ""}
 	meta := sql.NullString{String: u.Doc.OtherMeta, Valid: u.Doc.OtherMeta != ""}
 
 	_, err := u.tx.Exec(`
-	INSERT INTO Documents(path, title, date, fileTime, meta)
-	VALUES (?,?,?,?,?)
+	INSERT INTO Documents(path, title, date, fileTime, headings, meta)
+	VALUES (?,?,?,?,?,?)
 	ON CONFLICT(path)
 	DO UPDATE SET
 		title=excluded.title,
 		date=excluded.date,
 		fileTime=excluded.fileTime,
+		headings=excluded.headings,
 		meta=excluded.meta
-	`, u.Doc.Path, title, date, filetime, meta)
+	`, u.Doc.Path, title, date, filetime, headings, meta)
 	if err != nil {
 		return true, err
 	}
@@ -160,6 +162,7 @@ func (u *UpdateMany) documents() (bool, error) {
 		title TEXT,
 		date INT,
 		fileTime INT,
+		headings TEXT,
 		meta BLOB
 	)`)
 	if err != nil {
@@ -167,7 +170,7 @@ func (u *UpdateMany) documents() (bool, error) {
 	}
 	defer u.tx.Exec("DROP TABLE temp.updateDocs")
 
-	tempInsertStmt, err := u.tx.Prepare("INSERT INTO temp.updateDocs VALUES (?,?,?,?,?)")
+	tempInsertStmt, err := u.tx.Prepare("INSERT INTO temp.updateDocs VALUES (?,?,?,?,?,?)")
 	if err != nil {
 		return false, err
 	}
@@ -186,11 +189,15 @@ func (u *UpdateMany) documents() (bool, error) {
 			Int64: doc.Date.Unix(),
 			Valid: !doc.Date.IsZero(),
 		}
+		headings := sql.NullString{
+			String: doc.Headings,
+			Valid:  doc.Headings != "",
+		}
 		meta := sql.NullString{
 			String: doc.OtherMeta,
 			Valid:  doc.OtherMeta != "",
 		}
-		if _, err := tempInsertStmt.Exec(path, title, date, filetime, meta); err != nil {
+		if _, err := tempInsertStmt.Exec(path, title, date, filetime, headings, meta); err != nil {
 			return false, err
 		}
 	}
@@ -206,12 +213,13 @@ func (u *UpdateMany) documents() (bool, error) {
 	}
 
 	_, err = u.tx.Exec(`
-	INSERT INTO Documents (path, title, date, fileTime, meta)
+	INSERT INTO Documents (path, title, date, fileTime, headings, meta)
 	SELECT * FROM updateDocs WHERE TRUE
 	ON CONFLICT(path) DO UPDATE SET
 		title=excluded.title,
 		date=excluded.date,
 		fileTime=excluded.fileTime,
+		headings=excluded.headings,
 		meta=excluded.meta
 	WHERE excluded.fileTime > Documents.fileTime
 	`)

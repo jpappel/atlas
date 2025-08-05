@@ -32,6 +32,7 @@ func TestUpdate_Update(t *testing.T) {
 				FileTime: time.Unix(2, 0),
 				Authors:  []string{"jp"},
 				Tags:     []string{"foo", "bar", "oof", "baz"},
+				Headings: "#A Heading\n",
 				Links:    []string{"link_1", "link_2", "link_3"},
 			},
 			nil,
@@ -48,6 +49,7 @@ func TestUpdate_Update(t *testing.T) {
 					FileTime: time.Unix(2, 0),
 					Authors:  []string{"jp"},
 					Tags:     []string{"foo", "bar", "oof", "baz"},
+					Headings: "#Old Heading\n",
 					Links:    []string{"link_1", "link_2", "link_3"},
 				})
 
@@ -64,6 +66,7 @@ func TestUpdate_Update(t *testing.T) {
 				FileTime: time.Unix(3, 0),
 				Authors:  []string{"jp", "pj"},
 				Tags:     []string{"foo", "bar", "oof"},
+				Headings: "#New Heading\n",
 				Links:    []string{"link_4"},
 			},
 			nil,
@@ -115,6 +118,7 @@ func TestUpdateMany_Update(t *testing.T) {
 					FileTime: time.Unix(2, 0),
 					Authors:  []string{"jp"},
 					Tags:     []string{"foo", "bar", "oof", "baz"},
+					Headings: "# Some Heading\n",
 					Links:    []string{"link_1", "link_2", "link_3"},
 				},
 				"/bfile": {
@@ -190,6 +194,7 @@ func TestUpdateMany_Update(t *testing.T) {
 						FileTime: time.Unix(2, 0),
 						Authors:  []string{"jp"},
 						Tags:     []string{"foo", "bar", "oof", "baz"},
+						Headings: "# A Original\n",
 						Links:    []string{"link_1", "link_2", "link_3"},
 					},
 					"/bfile": {
@@ -199,6 +204,7 @@ func TestUpdateMany_Update(t *testing.T) {
 						FileTime: time.Unix(4, 0),
 						Authors:  []string{"pj"},
 						Tags:     []string{"foo", "gar"},
+						Headings: "# B Original\n",
 						Links:    []string{"link_4"},
 					},
 				}
@@ -220,6 +226,7 @@ func TestUpdateMany_Update(t *testing.T) {
 					FileTime: time.Unix(10, 0),
 					Authors:  []string{"jp"},
 					Tags:     []string{"foo", "bar", "bing", "baz"},
+					Headings: "# A New\n",
 					Links:    []string{"link_1", "link_3"},
 				},
 				"/bfile": {

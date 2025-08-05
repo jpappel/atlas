@@ -66,14 +66,15 @@ func (f *Fill) document(ctx context.Context) error {
 	var title sql.NullString
 	var dateEpoch sql.NullInt64
 	var fileTimeEpoch sql.NullInt64
+	var headings sql.NullString
 	var meta sql.NullString
 
 	row := f.Db.QueryRowContext(ctx, `
-	SELECT id, title, date, fileTime, meta
+	SELECT id, title, date, fileTime, headings, meta
 	FROM Documents
 	WHERE path = ?
 	`, f.Path)
-	if err := row.Scan(&f.id, &title, &dateEpoch, &fileTimeEpoch, &meta); err != nil {
+	if err := row.Scan(&f.id, &title, &dateEpoch, &fileTimeEpoch, &headings, &meta); err != nil {
 		return err
 	}
 
@@ -85,6 +86,9 @@ func (f *Fill) document(ctx context.Context) error {
 	}
 	if fileTimeEpoch.Valid {
 		f.doc.FileTime = time.Unix(fileTimeEpoch.Int64, 0)
+	}
+	if headings.Valid {
+		f.doc.Headings = headings.String
 	}
 	if meta.Valid {
 		f.doc.OtherMeta = meta.String
@@ -98,7 +102,7 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 	if rows == nil {
 		var err error
 		rows, err = f.Db.QueryContext(ctx, `
-	SELECT id, path, title, date, fileTime, meta
+	SELECT id, path, title, date, fileTime, headings, meta
 	FROM Documents
 	`)
 		if err != nil {
@@ -107,7 +111,7 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 		defer rows.Close()
 	} else if cols, err := rows.ColumnTypes(); err != nil {
 		return err
-	} else if len(cols) != 6 {
+	} else if len(cols) != 7 {
 		return fmt.Errorf("Not enough columns to fill documents with")
 	} else if t := cols[0].DatabaseTypeName(); t != "INTEGER" {
 		return fmt.Errorf("Expected integer for id column fill, got %s", t)
@@ -119,17 +123,19 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 		return fmt.Errorf("Expected integer for date column fill, got %s", t)
 	} else if t := cols[4].DatabaseTypeName(); t != "INT" {
 		return fmt.Errorf("Expected integer for filetime column fill, got %s", t)
-	} else if t := cols[5].DatabaseTypeName(); t != "BLOB" {
+	} else if t := cols[5].DatabaseTypeName(); t != "TEXT" {
+		return fmt.Errorf("Expected text for headings column fill, got %s", t)
+	} else if t := cols[6].DatabaseTypeName(); t != "BLOB" {
 		return fmt.Errorf("Expected text for meta column fill, got %s", t)
 	}
 
 	var id int
 	var docPath string
-	var title, meta sql.NullString
+	var title, headings, meta sql.NullString
 	var dateEpoch, filetimeEpoch sql.NullInt64
 
 	for rows.Next() {
-		if err := rows.Scan(&id, &docPath, &title, &dateEpoch, &filetimeEpoch, &meta); err != nil {
+		if err := rows.Scan(&id, &docPath, &title, &dateEpoch, &filetimeEpoch, &headings, &meta); err != nil {
 			return err
 		}
 
@@ -145,6 +151,9 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 		}
 		if filetimeEpoch.Valid {
 			doc.FileTime = time.Unix(filetimeEpoch.Int64, 0)
+		}
+		if headings.Valid {
+			doc.Headings = headings.String
 		}
 		if meta.Valid {
 			doc.OtherMeta = meta.String
