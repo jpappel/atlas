@@ -264,6 +264,7 @@ func TestIndex_ParseOne(t *testing.T) {
 				In this sentence there is a valid [hyperlink](https://jpappel.xyz).
 				But in this sentence, the [link]() should not get parsed.
 				The same is true for the [link](       	) in this sentence.
+				There must be a nonwhitespace characters for a link to be a [valid link](   destination  )
 				`)
 
 				return path
@@ -271,7 +272,51 @@ func TestIndex_ParseOne(t *testing.T) {
 			index.ParseOpts{ParseLinks: true},
 			&index.Document{
 				Title: "Link test",
-				Links: []string{"https://jpappel.xyz"},
+				Links: []string{"https://jpappel.xyz", "destination"},
+			},
+			nil,
+		},
+		{
+			"headings",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "headings")
+				defer f.Close()
+
+				f.WriteString("---\n")
+				f.WriteString("title: Heading test\n")
+				f.WriteString("---\n")
+				f.WriteString("# A Heading\n")
+				f.WriteString("##Another Heading\n")
+				f.WriteString("### [Linked Heading](but no link parse)\n")
+				return path
+			},
+			index.ParseOpts{ParseHeadings: true},
+			&index.Document{
+				Title:    "Heading test",
+				Headings: "# A Heading\n##Another Heading\n### [Linked Heading]\n",
+			},
+			nil,
+		},
+		{
+			"linked_headings",
+			func(t *testing.T) string {
+				f, path := newTestFile(t, "linked_headings")
+				defer f.Close()
+
+				f.WriteString("---\n")
+				f.WriteString("title: Linked Heading Test\n")
+				f.WriteString("---\n")
+
+				f.WriteString("#[Top Level Heading](and its link)\n")
+				f.WriteString("## [Second Level heading](  sometext  )\n")
+
+				return path
+			},
+			index.ParseOpts{ParseLinks: true, ParseHeadings: true},
+			&index.Document{
+				Title:    "Linked Heading Test",
+				Headings: "#[Top Level Heading]\n## [Second Level heading]\n",
+				Links:    []string{"and its link", "sometext"},
 			},
 			nil,
 		},

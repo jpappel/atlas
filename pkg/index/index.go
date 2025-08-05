@@ -21,9 +21,8 @@ import (
 )
 
 var ErrHeaderParse error = errors.New("Unable to parse YAML header")
-var linkRegex *regexp.Regexp
+var DocParseRegex *regexp.Regexp
 
-// TODO: add headings field
 type Document struct {
 	Path      string    `yaml:"-" json:"path"`
 	Title     string    `yaml:"title" json:"title"`
@@ -32,17 +31,18 @@ type Document struct {
 	Authors   []string  `yaml:"-" json:"authors"`
 	Tags      []string  `yaml:"tags,omitempty" json:"tags"`
 	Links     []string  `yaml:"-" json:"links"`
+	Headings  string    `yaml:"-" json:"headings"`
 	OtherMeta string    `yaml:"-" json:"meta"`
 	parseOpts ParseOpts
 }
 
 type ParseOpts struct {
 	ParseMeta       bool
+	ParseHeadings   bool
 	ParseLinks      bool
 	IgnoreDateError bool
 	IgnoreMetaError bool
 	IgnoreHidden    bool
-	// TODO: add IgnoreHeadings
 }
 
 type InfoPath struct {
@@ -77,13 +77,13 @@ var _ yaml.BytesMarshaler = (*Document)(nil)
 func (doc *Document) MarshalYAML() ([]byte, error) {
 	return yaml.Marshal(yaml.MapSlice{
 		{Key: "path", Value: doc.Path},
-		// TODO: add headings
 		{Key: "title", Value: doc.Title},
 		{Key: "date", Value: doc.Date},
 		{Key: "filetime", Value: doc.FileTime},
 		{Key: "authors", Value: doc.Authors},
 		{Key: "tags", Value: doc.Tags},
 		{Key: "links", Value: doc.Links},
+		{Key: "headings", Value: doc.Headings},
 		{Key: "meta", Value: doc.OtherMeta},
 	})
 }
@@ -188,7 +188,7 @@ func (doc *Document) parseAuthor(node ast.Node) error {
 }
 
 func (doc Document) Equal(other Document) bool {
-	if len(doc.Authors) != len(other.Authors) || len(doc.Tags) != len(other.Tags) || len(doc.Links) != len(other.Links) || doc.Path != other.Path || doc.Title != other.Title || doc.OtherMeta != other.OtherMeta || !doc.Date.Equal(other.Date) {
+	if len(doc.Authors) != len(other.Authors) || len(doc.Tags) != len(other.Tags) || len(doc.Links) != len(other.Links) || doc.Path != other.Path || doc.Title != other.Title || doc.OtherMeta != other.OtherMeta || doc.Headings != other.Headings || !doc.Date.Equal(other.Date) {
 		return false
 	}
 
@@ -212,7 +212,6 @@ func (doc Document) Equal(other Document) bool {
 		}
 	}
 
-	// TODO: handle headings
 	return true
 }
 
@@ -269,23 +268,19 @@ func (idx Index) Traverse(numWorkers uint, ignoreHidden bool) []string {
 
 	activeJobs := &sync.WaitGroup{}
 
-	// start workers
 	for range numWorkers {
 		go workerTraverse(activeJobs, ignoreHidden, jobs, filterQueue)
 	}
 
-	// init send
 	activeJobs.Add(1)
 	jobs <- InfoPath{Path: idx.Root, Info: rootInfo}
 
-	// close jobs queue
 	go func() {
 		activeJobs.Wait()
 		close(jobs)
 		close(filterQueue)
 	}()
 
-	// gather
 	for doc := range filterQueue {
 		docs = append(docs, doc.Path)
 	}
@@ -381,7 +376,10 @@ func NewDocCmp(field string, reverse bool) (func(*Document, *Document) int, bool
 		return func(a, b *Document) int {
 			return descMod * strings.Compare(a.OtherMeta, b.OtherMeta)
 		}, true
-		// TODO: add headings
+	case "headings":
+		return func(a, b *Document) int {
+			return descMod * strings.Compare(a.Headings, b.Headings)
+		}, true
 	}
 
 	return nil, false
@@ -413,24 +411,44 @@ func ParseDoc(path string, opts ParseOpts) (*Document, error) {
 		return nil, errors.Join(ErrHeaderParse, err)
 	}
 
-	// TODO: parse headings simultaneously with links
-	if opts.ParseLinks {
+	if opts.ParseLinks || opts.ParseHeadings {
 		var buf bytes.Buffer
 		f.Seek(pos, io.SeekStart)
 		if _, err := io.Copy(&buf, f); err != nil {
 			return nil, err
 		}
 
-		matches := linkRegex.FindAllSubmatch(buf.Bytes(), -1)
+		const (
+			MATCH = iota
+			LH_HEADING
+			LH_LINK
+			HEADING
+			LINK
+		)
+
+		matches := DocParseRegex.FindAllSubmatch(buf.Bytes(), -1)
+		b := strings.Builder{}
 		for _, match := range matches {
-			if len(match) != 2 {
-				panic("Link parsing regex returned unexpected number of matches")
+			if opts.ParseHeadings {
+				if len(match[LH_HEADING]) != 0 {
+					b.Write(match[LH_HEADING])
+					b.WriteByte('\n')
+				} else if len(match[HEADING]) != 0 {
+					b.Write(match[HEADING])
+					b.WriteByte('\n')
+				}
 			}
-			link := string(match[1])
-			if len(link) > 0 {
-				doc.Links = append(doc.Links, link)
+
+			if opts.ParseLinks {
+				if len(match[LH_LINK]) != 0 {
+					doc.Links = append(doc.Links, string(match[LH_LINK]))
+				} else if len(match[LINK]) != 0 {
+					doc.Links = append(doc.Links, string(match[LINK]))
+				}
 			}
 		}
+
+		doc.Headings = b.String()
 	}
 
 	return doc, nil
@@ -482,5 +500,12 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) (map[string]*Doc
 }
 
 func init() {
-	linkRegex = regexp.MustCompile(`\[.*\]\(\s*([^\)\s]+)\s*\)`)
+	headingPattern := `(?:^|\n)(?<heading>#{1,6}.*)`
+	linkPattern := `\[.*\]\(\s*(?<link>.*)\b\s*\)`
+	linkHeading := `(?:^|\n)(?<lh_heading>#{1,6}\s*\[.*\])\(\s*(?<lh_link>.*)\b\s*\)`
+	DocParseRegex = regexp.MustCompile(
+		linkHeading + "|" +
+			headingPattern + "|" +
+			linkPattern,
+	)
 }

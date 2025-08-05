@@ -21,10 +21,15 @@ type IndexFlags struct {
 func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 	flags.ParseLinks = true
 	flags.ParseMeta = true
+	flags.ParseHeadings = true
 	fs.BoolVar(&flags.IgnoreDateError, "ignoreBadDates", false, "ignore malformed dates while indexing")
 	fs.BoolVar(&flags.IgnoreMetaError, "ignoreMetaError", false, "ignore errors while parsing general YAML header info")
 	fs.BoolFunc("ignoreMeta", "only parse title, authors, date, tags from YAML headers", func(s string) error {
 		flags.ParseMeta = false
+		return nil
+	})
+	fs.BoolFunc("ignoreHeadings", "don't parse file contents for section headings", func(s string) error {
+		flags.ParseHeadings = false
 		return nil
 	})
 	fs.BoolFunc("ignoreLinks", "don't parse file contents for links", func(s string) error {
@@ -125,7 +130,4 @@ func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 	}
 
 	return 0
-}
-
-func init() {
 }
