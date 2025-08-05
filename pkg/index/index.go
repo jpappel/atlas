@@ -501,8 +501,8 @@ func ParseDocs(paths []string, numWorkers uint, opts ParseOpts) (map[string]*Doc
 
 func init() {
 	headingPattern := `(?:^|\n)(?<heading>#{1,6}.*)`
-	linkPattern := `\[.*\]\(\s*(?<link>.*)\b\s*\)`
-	linkHeading := `(?:^|\n)(?<lh_heading>#{1,6}\s*\[.*\])\(\s*(?<lh_link>.*)\b\s*\)`
+	linkPattern := `\[.*\]\(\s*(?<link>.*(?:\b|/))\s*\)`
+	linkHeading := `(?:^|\n)(?<lh_heading>#{1,6}\s*\[.*\])\(\s*(?<lh_link>.*(?:\b|/))\s*\)`
 	DocParseRegex = regexp.MustCompile(
 		linkHeading + "|" +
 			headingPattern + "|" +
