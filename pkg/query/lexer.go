@@ -38,9 +38,9 @@ const (
 	TOK_CAT_DATE
 	TOK_CAT_FILETIME
 	TOK_CAT_TAGS
+	TOK_CAT_HEADINGS
 	TOK_CAT_LINKS
 	TOK_CAT_META
-	// TODO: add headings
 	// values
 	TOK_VAL_STR
 	TOK_VAL_DATETIME
@@ -93,6 +93,8 @@ func (tokType queryTokenType) String() string {
 		return "Filetime Category"
 	case TOK_CAT_TAGS:
 		return "Tags Category"
+	case TOK_CAT_HEADINGS:
+		return "Headings Category"
 	case TOK_CAT_LINKS:
 		return "Links Category"
 	case TOK_CAT_META:
@@ -123,7 +125,9 @@ func (tokType queryTokenType) Any(expected ...queryTokenType) bool {
 }
 
 func (t queryTokenType) isCategory() bool {
-	return t.Any(TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META)
+	return t.Any(TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR,
+		TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_HEADINGS, TOK_CAT_LINKS,
+		TOK_CAT_META)
 }
 
 func (t queryTokenType) isDateOperation() bool {
@@ -261,6 +265,8 @@ func tokenizeCategory(s string) Token {
 		t.Type = TOK_CAT_FILETIME
 	case "t", "tags":
 		t.Type = TOK_CAT_TAGS
+	case "h", "headings":
+		t.Type = TOK_CAT_HEADINGS
 	case "l", "links":
 		t.Type = TOK_CAT_LINKS
 	case "m", "meta":
@@ -279,7 +285,7 @@ func tokenizeValue(s string, catType queryTokenType) Token {
 	switch catType {
 	case TOK_CAT_DATE, TOK_CAT_FILETIME:
 		t.Type = TOK_VAL_DATETIME
-	case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META:
+	case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_TAGS, TOK_CAT_HEADINGS, TOK_CAT_LINKS, TOK_CAT_META:
 		t.Type = TOK_VAL_STR
 	}
 	return t
@@ -310,7 +316,7 @@ func TokensStringify(tokens []Token) string {
 		case TOK_CLAUSE_AND:
 			b.WriteString("and\n")
 			indentLvl += 1
-		case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META, TOK_OP_NEG:
+		case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_HEADINGS, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META, TOK_OP_NEG:
 			if i == 0 || tokens[i-1].Type != TOK_OP_NEG {
 				writeIndent(&b, indentLvl)
 			}
@@ -328,7 +334,7 @@ func TokensStringify(tokens []Token) string {
 
 func init() {
 	negPattern := `(?<negation>-?)`
-	categoryPattern := `(?<category>T|p(?:ath)?|a(?:uthor)?|d(?:ate)?|f(?:iletime)?|t(?:ags|itle)?|l(?:inks)?|m(?:eta)?)`
+	categoryPattern := `(?<category>T|p(?:ath)?|a(?:uthor)?|d(?:ate)?|f(?:iletime)?|t(?:ags|itle)?|h(?:eadings)?|l(?:inks)?|m(?:eta)?)`
 	opPattern := `(?<operator>!re!|!=|<=|>=|=|:|~|<|>)`
 	valPattern := `(?<value>".*?"|\S*[^\s\)])`
 	statementPattern := `(?<statement>` + negPattern + categoryPattern + opPattern + valPattern + `)`

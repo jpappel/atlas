@@ -88,6 +88,7 @@ func Help(topic string, w io.Writer) {
        %f     - Date - filetime
        %a     - List - authors
        %t     - List - tags
+	   %h     - Str  - headings (newline separated)
        %l     - List - links
        %m     - Str  - meta
 

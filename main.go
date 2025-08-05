@@ -12,7 +12,7 @@ import (
 	"github.com/jpappel/atlas/pkg/query"
 )
 
-const VERSION = "0.4.1"
+const VERSION = "0.5.1"
 const ExitCommand = 2 // exit because of a command parsing error
 
 func addGlobalFlagUsage(fs *flag.FlagSet) func() {

@@ -23,6 +23,7 @@ const (
 	OUT_TOK_FILETIME             // %f %filetime
 	OUT_TOK_AUTHORS              // %a %authors
 	OUT_TOK_TAGS                 // %t %tags
+	OUT_TOK_HEADINGS             // %h %headings
 	OUT_TOK_LINKS                // %l %links
 	OUT_TOK_META                 // %m %meta
 )
@@ -217,6 +218,8 @@ func ParseOutputFormat(formatStr string) ([]OutputToken, []string, error) {
 				toks = append(toks, OUT_TOK_AUTHORS)
 			case "%t":
 				toks = append(toks, OUT_TOK_TAGS)
+			case "%h":
+				toks = append(toks, OUT_TOK_HEADINGS)
 			case "%l":
 				toks = append(toks, OUT_TOK_LINKS)
 			case "%m":

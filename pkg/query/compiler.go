@@ -53,6 +53,8 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 			catStr = "meta "
 		case CAT_TAGS:
 			catStr = "tag "
+		case CAT_HEADINGS:
+			catStr = "headings "
 		case CAT_TITLE:
 			catStr = "title "
 		default:

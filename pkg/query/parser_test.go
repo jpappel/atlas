@@ -15,6 +15,7 @@ const (
 	CAT_DATE     = query.CAT_DATE
 	CAT_FILETIME = query.CAT_FILETIME
 	CAT_TAGS     = query.CAT_TAGS
+	CAT_HEADINGS = query.CAT_HEADINGS
 	CAT_LINKS    = query.CAT_LINKS
 	CAT_META     = query.CAT_META
 

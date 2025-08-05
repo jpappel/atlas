@@ -21,6 +21,7 @@ const (
 	CAT_DATE
 	CAT_FILETIME
 	CAT_TAGS
+	CAT_HEADINGS
 	CAT_LINKS
 	CAT_META
 )
@@ -155,6 +156,8 @@ func (t catType) String() string {
 		return "fileTime"
 	case CAT_TAGS:
 		return "tag"
+	case CAT_HEADINGS:
+		return "headings"
 	case CAT_LINKS:
 		return "links"
 	case CAT_META:
@@ -210,6 +213,8 @@ func tokToCat(t queryTokenType) catType {
 		return CAT_FILETIME
 	case TOK_CAT_TAGS:
 		return CAT_TAGS
+	case TOK_CAT_HEADINGS:
+		return CAT_HEADINGS
 	case TOK_CAT_LINKS:
 		return CAT_LINKS
 	case TOK_CAT_META:
@@ -488,7 +493,7 @@ func Parse(tokens []Token) (*Clause, error) {
 
 			stmt := Statement{Negated: true}
 			clause.Statements = append(clause.Statements, stmt)
-		case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_LINKS, TOK_CAT_META:
+		case TOK_CAT_PATH, TOK_CAT_TITLE, TOK_CAT_AUTHOR, TOK_CAT_DATE, TOK_CAT_FILETIME, TOK_CAT_TAGS, TOK_CAT_HEADINGS, TOK_CAT_LINKS, TOK_CAT_META:
 			if !prevToken.Type.Any(TOK_CLAUSE_OR, TOK_CLAUSE_AND, TOK_VAL_STR, TOK_VAL_DATETIME, TOK_OP_NEG, TOK_CLAUSE_END) {
 				return nil, &TokenError{
 					got:      token,

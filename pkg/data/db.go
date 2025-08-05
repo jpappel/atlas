@@ -258,10 +258,10 @@ func createSchema(db *sql.DB, version string) error {
 	SELECT
 		d.id AS docId,
 		d.path,
-		d.headings,
 		d.title,
 		d.date,
 		d.fileTime,
+		d.headings,
 		d.meta,
 		COALESCE(a.name, al.alias) AS author,
 		t.name AS tag,
@@ -396,7 +396,7 @@ func (q Query) Execute(ctx context.Context, artifact query.CompilationArtifact) 
 	}
 
 	compiledQuery := fmt.Sprintf(`
-	SELECT DISTINCT docId, path, headings, title, date, fileTime, meta
+	SELECT DISTINCT docId, path, title, date, fileTime, headings, meta
 	FROM Search
 	WHERE %s`, artifact.Query)
 
