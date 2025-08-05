@@ -74,8 +74,60 @@ func Help(topic string, w io.Writer) {
 		fmt.Fprintln(w, "Execute a query against the connected database")
 		fmt.Fprintln(w, "Query Flags:")
 		PrintFlagSet(w, fs)
+		fmt.Fprintln(w, "\nQuery Language:")
+		queryHelp := `Atlas' query language evaluates logical clauses composed of statements.
+A clause is a collection of statements and clauses with a either 'and' or 'or' in prefix notation.
+A statement has the form <category><operator><value> with an optional preceeding '-' to negate it.
+As a quality of life feature, an implicit top level 'and' clause is added. This clause gets optimized out by default.
+
+  Examples:
+    Implicit and
+      atlas query "path:foobar -a=Goose" -> (and path:foobar -a=Goose)
+    Implicit and optimization
+      atlas query -optLevel=-1 "(or T=foo T=bar)" -> (and (or T=foo T=bar))
+      atlas query "(or T=foo T=bar)" -> (or T=foo T=bar)
+    Add trailing parenthesis
+      atlas query "(or (and a=Goose a=Duck) (and p:birds t:waterfowl" -> (or (and a=Goose a=Duck) (and p:birds t:waterfowl))
+
+Categories have short and long identifiers. They also have an associated type which modifies
+how operators are applied to it.
+
+  Category     - Type
+  	p path     - String
+	T title    - String
+	a author   - Set
+	d date     - Date
+	f filetime - Date
+	t tags     - Set
+	h headings - String
+	l links    - Set
+	m meta     - String
+
+  Operator    - Supported Types - Value
+  	!=        - All             - Not Equal (Not In for Sets)
+  	>=        - Dates           - Greater Than or Equal
+  	<=        - Dates           - Less Than or Equal
+  	<         - Dates           - Less Than
+  	>         - Dates           - Greater Than
+  	=         - All             - Equal (In for Sets)
+  	: ~       - All             - Approximate (Approximately In for Sets)
+  	/         - String,Set      - Regular Expression
+
+Values containg spaces must be surrounded in double quotes.
+Atlas recognizes many of the common date formats.
+  Example:
+    atlas query date>January 1, 2025 -> error
+	atlas query date>"2025 January 1" ->  success
+	atlas query T:Meeting Minutes -> error
+	atlas query T:"Meeting Minutes" -> success
+
+  Values
+  	String
+	Date
+`
+		fmt.Fprint(w, queryHelp)
 		fmt.Fprintln(w, "\nOutput Format:")
-		help := `The output format of query results can be customized by setting -outCustomFormat.
+		outHelp := `The output format of query results can be customized by setting -outCustomFormat.
 
   The output of each document has the value of -docSeparator appended to it.
   Dates are formated using -dateFormat
@@ -97,7 +149,7 @@ func Help(topic string, w io.Writer) {
     "<h1><a href="%p">%T</a></h1>" -> '<h1><a href="/a/path/to/document">A Title</a></h1>\n'
 
 `
-		fmt.Fprint(w, help)
+		fmt.Fprint(w, outHelp)
 	case "shell":
 		fmt.Fprintf(w, "%s [global-flags] shell\n", os.Args[0])
 		fmt.Fprintln(w, "Simple shell for debugging queries")
