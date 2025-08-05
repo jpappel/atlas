@@ -31,11 +31,20 @@ Try POSTing a query to <pre>/search</pre></p>
 <li>path</li>
 <li>title</li>
 <li>date</li>
+<li>headings</li>
 <li>filetime</li>
 <li>meta</li>
 </ul>
-You can change the order using <pre>sortOrder</pre> with asc or desc
-</p>`))
+You can change the order using <pre>sortOrder</pre> with <pre>asc</pre> or <pre>desc</pre>
+</p>
+<form action="/search" method="post">
+<fieldset><legend>Submit a Query</legend>
+<label for="query">Query:</label>
+<input type="text" name="query" required />
+<input type="submit" />
+</fieldset>
+</form>
+`))
 }
 
 func NewMux(db *data.Query) *http.ServeMux {
@@ -49,7 +58,12 @@ func NewMux(db *data.Query) *http.ServeMux {
 	mux.HandleFunc("/", info)
 	mux.HandleFunc("POST /search", func(w http.ResponseWriter, r *http.Request) {
 		b := &strings.Builder{}
-		if _, err := io.Copy(b, r.Body); err != nil {
+		r.ParseForm()
+
+		if v := r.Form.Get("query"); v != "" {
+			slog.Debug("parsing form, got value", slog.String("value", v))
+			b.WriteString(v)
+		} else if _, err := io.Copy(b, r.Body); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error processing request"))
 			slog.Error("Error reading request body", slog.String("err", err.Error()))
