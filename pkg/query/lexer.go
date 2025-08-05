@@ -243,7 +243,7 @@ func tokenizeOperation(s string) Token {
 		t.Type = TOK_OP_LT
 	case ">":
 		t.Type = TOK_OP_GT
-	case "!re!":
+	case "/":
 		t.Type = TOK_OP_RE
 	}
 
@@ -335,7 +335,7 @@ func TokensStringify(tokens []Token) string {
 func init() {
 	negPattern := `(?<negation>-?)`
 	categoryPattern := `(?<category>T|p(?:ath)?|a(?:uthor)?|d(?:ate)?|f(?:iletime)?|t(?:ags|itle)?|h(?:eadings)?|l(?:inks)?|m(?:eta)?)`
-	opPattern := `(?<operator>!re!|!=|<=|>=|=|:|~|<|>)`
+	opPattern := `(?<operator>!=|<=|>=|=|:|/|~|<|>)`
 	valPattern := `(?<value>".*?"|\S*[^\s\)])`
 	statementPattern := `(?<statement>` + negPattern + categoryPattern + opPattern + valPattern + `)`
 	unknownPattern := `(?<unknown>\S*".*?"[^\s)]*|\S*[^\s\)])`
