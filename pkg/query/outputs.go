@@ -326,6 +326,8 @@ func (o CustomOutput) writeDoc(w io.Writer, doc *index.Document) (int, error) {
 			b.WriteString(strings.Join(doc.Authors, o.listSeparator))
 		case OUT_TOK_TAGS:
 			b.WriteString(strings.Join(doc.Tags, o.listSeparator))
+		case OUT_TOK_HEADINGS:
+			b.WriteString(doc.Headings)
 		case OUT_TOK_LINKS:
 			b.WriteString(strings.Join(doc.Links, o.listSeparator))
 		case OUT_TOK_META:
