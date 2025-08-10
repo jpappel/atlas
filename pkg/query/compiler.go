@@ -73,7 +73,7 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				if cat.IsOrdered() {
 					opStr = "BETWEEN "
 				} else {
-					opStr = "LIKE "
+					opStr = "MATCH "
 				}
 			case OP_EQ:
 				if cat.IsSet() {
@@ -82,16 +82,12 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 					opStr = "= "
 				}
 			case OP_GE:
-				// NOTE: doesn't raise compiler error if operator used on invalid category
 				opStr = ">= "
 			case OP_GT:
-				// NOTE: doesn't raise compiler error if operator used on invalid category
 				opStr = "> "
 			case OP_LE:
-				// NOTE: doesn't raise compiler error if operator used on invalid category
 				opStr = "<= "
 			case OP_LT:
-				// NOTE: doesn't raise compiler error if operator used on invalid category
 				opStr = "< "
 			case OP_RE:
 				opStr = "REGEXP "
@@ -156,10 +152,10 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 					b.WriteString(opStr)
 					arg, ok := stmt.Value.buildCompile(b)
 					if ok {
-						args = append(args, "%"+arg+"%")
+						args = append(args, arg)
 					}
 					if idx != len(opStmts)-1 {
-						b.WriteString(" OR ")
+						b.WriteString(" " + delim + " ")
 					}
 					sCount++
 					idx++
@@ -200,11 +196,7 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 					b.WriteString(opStr)
 					arg, ok := stmt.Value.buildCompile(b)
 					if ok {
-						if op == OP_AP {
-							args = append(args, "%"+arg+"%")
-						} else {
-							args = append(args, arg)
-						}
+						args = append(args, arg)
 					}
 					b.WriteByte(' ')
 					if idx != len(opStmts)-1 {

@@ -53,7 +53,7 @@ func TestParse(t *testing.T) {
 		&query.Clause{
 			Operator: query.COP_AND,
 			Statements: []query.Statement{
-				{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"ken thompson"}},
+				{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"\"ken thompson\""}},
 			},
 		},
 		nil,
@@ -70,7 +70,7 @@ func TestParse(t *testing.T) {
 		&query.Clause{
 			Operator: query.COP_AND,
 			Statements: []query.Statement{
-				{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"Alonzo Church"}},
+				{Category: CAT_AUTHOR, Operator: OP_AP, Value: query.StringValue{"\"Alonzo Church\""}},
 			},
 			Clauses: []*query.Clause{
 				{

@@ -88,6 +88,7 @@ var optimizations = []string{
 	"compact",
 	"strictEq",
 	"mergeregex",
+	"mergeap",
 }
 
 var commands = map[string]ITokType{
@@ -444,37 +445,41 @@ out:
 			}
 
 			o := query.NewOptimizer(clause, inter.Workers)
-			switch optName {
-			case "simplify":
-				o.Simplify()
-			case "tighten":
-				o.Tighten()
-			case "flatten":
-				o.Flatten()
-			case "sort":
-				o.SortStatements()
-			case "tidy":
-				o.Tidy()
-			case "contradictions":
-				o.Contradictions()
-			case "compact":
-				o.Compact()
-			case "strictEq":
-				o.StrictEquality()
-			case "mergeregex":
-				o.MergeRegex()
-			default:
-				suggestion, ok := util.Nearest(
-					optName,
-					inter.keywords.optimizations,
-					util.LevensteinDistance,
-					min(len(optName), 4),
-				)
-				suggestionTxt := ""
-				if ok {
-					suggestionTxt = fmt.Sprintf(": Did you mean '%s'?", suggestion)
+			for curOpt := range strings.SplitSeq(optName, ",") {
+				switch curOpt {
+				case "simplify":
+					o.Simplify()
+				case "tighten":
+					o.Tighten()
+				case "flatten":
+					o.Flatten()
+				case "sort":
+					o.SortStatements()
+				case "tidy":
+					o.Tidy()
+				case "contradictions":
+					o.Contradictions()
+				case "compact":
+					o.Compact()
+				case "strictEq":
+					o.StrictEquality()
+				case "mergeregex":
+					o.MergeRegex()
+				case "mergeap":
+					o.MergeApproximateMatches()
+				default:
+					suggestion, ok := util.Nearest(
+						optName,
+						inter.keywords.optimizations,
+						util.LevensteinDistance,
+						min(len(optName), 4),
+					)
+					suggestionTxt := ""
+					if ok {
+						suggestionTxt = fmt.Sprintf(": Did you mean '%s'?", suggestion)
+					}
+					return false, fmt.Errorf("Unrecognized optimization %s%s", t.Text, suggestionTxt)
 				}
-				return false, fmt.Errorf("Unrecognized optimization %s%s", t.Text, suggestionTxt)
 			}
 
 			stack = append(stack, Value{VAL_CLAUSE, clause})
@@ -777,7 +782,7 @@ func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "        ex. tokenize `author:me")
 	fmt.Fprintln(w, "parse (tokens)                        - parse tokens into a clause")
 	fmt.Fprintln(w, "optimize <level> (clause)             - optimize clause tree to <level>")
-	fmt.Fprintln(w, "opt <subcommand> (clause)             - apply specific optimization to clause tree")
+	fmt.Fprintln(w, "opt <subcommand1>,... (clause)        - apply specific optimization(s) to clause tree")
 	fmt.Fprintln(w, "    sort                              - sort statements")
 	fmt.Fprintln(w, "    flatten                           - flatten clauses")
 	fmt.Fprintln(w, "    compact                           - compact equivalent statements")
@@ -786,6 +791,7 @@ func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "    strictEq                          - zero fuzzy/range statements when an eq is present")
 	fmt.Fprintln(w, "    tighten                           - zero redundant fuzzy/range statements when another mathes the same values")
 	fmt.Fprintln(w, "    mergeregex                        - merge regexes")
+	fmt.Fprintln(w, "    mergeap                           - merge unordered approximate statements")
 	fmt.Fprintln(w, "compile (clause)                      - compile clause into query")
 	fmt.Fprintln(w, "execute (artifact)                    - excute the compiled query against the connected database")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")

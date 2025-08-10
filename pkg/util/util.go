@@ -3,6 +3,7 @@ package util
 import (
 	"iter"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -161,4 +162,11 @@ func Nearest[E any](candidate E, valid []E, cmp func(E, E) int, ceil int) (E, bo
 		return candidate, false
 	}
 	return valid[minIdx], minDistance < ceil
+}
+
+// Check if substr[left:right] is a substring of S.
+// If left > len(substr) use 0
+// If right < 0 use 0
+func ContainsSliced(s, substr string, left, right int) bool {
+	return strings.Contains(s, substr[min(left, len(substr)):max(right, 0)])
 }

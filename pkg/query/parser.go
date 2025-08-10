@@ -527,7 +527,11 @@ func Parse(tokens []Token) (*Clause, error) {
 				}
 			}
 
-			clause.Statements[len(clause.Statements)-1].Value = StringValue{token.Value}
+			if prevToken.Type == TOK_OP_AP {
+				clause.Statements[len(clause.Statements)-1].Value = StringValue{"\"" + token.Value + "\""}
+			} else {
+				clause.Statements[len(clause.Statements)-1].Value = StringValue{token.Value}
+			}
 		case TOK_VAL_DATETIME:
 			if !prevToken.Type.isDateOperation() {
 				return nil, &TokenError{

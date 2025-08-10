@@ -9,6 +9,9 @@ import (
 	"github.com/jpappel/atlas/pkg/util"
 )
 
+// FIXME: any substring checks on unorderd approximate statements will fail
+// this is because quotes are added to all approximate string values
+
 type Optimizer struct {
 	workers  uint
 	root     *Clause
@@ -64,6 +67,7 @@ func (o Optimizer) Optimize(level int) {
 		o.Tighten()
 		o.Contradictions()
 		o.MergeRegex()
+		o.MergeApproximateMatches()
 		// parallel + serial
 		o.Tidy()
 		// purely serial
@@ -175,6 +179,7 @@ func (o *Optimizer) Compact() {
 	o.isSorted = false
 }
 
+// Remove noop statements and clauses
 func (o *Optimizer) Tidy() {
 	// ensure ordering
 	if !o.isSorted {
@@ -306,7 +311,7 @@ func (o Optimizer) StrictEquality() {
 						stricts = append(stricts, val)
 					case OP_AP:
 						if slices.ContainsFunc(stricts, func(strictStr string) bool {
-							return strings.Contains(strictStr, val) || strings.Contains(val, strictStr)
+							return util.ContainsSliced(strictStr, val, 1, len(val)-1) || util.ContainsSliced(val, strictStr, 1, len(strictStr)-1)
 						}) {
 							stmts[i] = Statement{}
 							o.isSorted = false
@@ -327,7 +332,7 @@ func (o Optimizer) StrictEquality() {
 	})
 }
 
-// Merge regular within a clause
+// Merge regular expressions within a clause
 func (o *Optimizer) MergeRegex() {
 	if !o.isSorted {
 		o.SortStatements()
@@ -354,7 +359,7 @@ func (o *Optimizer) MergeRegex() {
 				}
 
 				for _, stmts := range opStmts.NegatedPartition() {
-					if len(stmts) <= 1 {
+					if len(stmts) < 2 {
 						continue
 					}
 					sortChanged = true
@@ -382,6 +387,59 @@ func (o *Optimizer) MergeRegex() {
 			}
 		}
 		if sortChanged {
+			o.isSorted = false
+		}
+	})
+}
+
+func (o *Optimizer) MergeApproximateMatches() {
+	if !o.isSorted {
+		o.SortStatements()
+	}
+
+	pool := &sync.Pool{}
+	pool.New = func() any {
+		return &strings.Builder{}
+	}
+
+	o.parallel(func(c *Clause) {
+		var delim string
+		switch c.Operator {
+		case COP_AND:
+			delim = " AND "
+		case COP_OR:
+			delim = " OR "
+		}
+
+		b := pool.Get().(*strings.Builder)
+		defer pool.Put(b)
+		defer b.Reset()
+
+		changeSort := false
+		for category, catStmts := range c.Statements.CategoryPartition() {
+			if len(catStmts) < 2 || category.IsOrdered() {
+				continue
+			}
+			for op, opStmts := range catStmts.OperatorPartition() {
+				if op != OP_AP || len(opStmts) < 2 {
+					continue
+				}
+				changeSort = true
+				for i, stmt := range opStmts {
+					b.WriteString(stmt.Value.(StringValue).S)
+					if i != len(opStmts)-1 {
+						b.WriteString(delim)
+					}
+
+					if i != 0 {
+						opStmts[i] = Statement{}
+					}
+				}
+				opStmts[0].Value = StringValue{S: b.String()}
+				b.Reset()
+			}
+		}
+		if changeSort {
 			o.isSorted = false
 		}
 	})
@@ -468,9 +526,9 @@ func (o *Optimizer) Tighten() {
 						val1 := strings.ToLower(s1.Value.(StringValue).S)
 						for j, s2 := range util.FilterIter(stmts[i+1:], func(s Statement) bool { return s.Operator == OP_AP }) {
 							val2 := strings.ToLower(s2.Value.(StringValue).S)
-							if strings.Contains(val2, val1) {
+							if util.ContainsSliced(val2, val1, 1, len(val1)-1) {
 								removals[i] = true
-							} else if strings.Contains(val1, val2) {
+							} else if util.ContainsSliced(val1, val2, 1, len(val2)-1) {
 								removals[j] = true
 							}
 						}
@@ -516,10 +574,10 @@ func (o *Optimizer) Tighten() {
 						val1 := strings.ToLower(s1.Value.(StringValue).S)
 						for j, s2 := range util.FilterIter(stmts[i+1:], func(s Statement) bool { return s.Operator == OP_AP }) {
 							val2 := strings.ToLower(s2.Value.(StringValue).S)
-							if strings.Contains(val2, val1) {
+							if util.ContainsSliced(val2, val1, 1, len(val1)-1) {
 								// NOTE: slicing stmts offsets the all indices by 1, hence the correction
 								removals[j+1] = true
-							} else if strings.Contains(val1, val2) {
+							} else if util.ContainsSliced(val1, val2, 1, len(val2)-1) {
 								removals[i] = true
 							}
 						}
