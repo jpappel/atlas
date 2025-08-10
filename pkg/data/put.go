@@ -280,40 +280,38 @@ func (p Put) authors() error {
 		return nil
 	}
 
-	// PERF: consider using temp table instead of cte
-	namesCTE, args := BatchQuery("WITH names(n) AS",
-		"( VALUES ", "(?)", ",", "),", len(p.Doc.Authors), p.Doc.Authors)
-
-	newAuthorsQuery := namesCTE + `
-	filtered_names AS (
-		SELECT n
-		FROM names
-		LEFT JOIN (
-			SELECT * FROM Authors
-			UNION ALL
-			SELECT * FROM Aliases
-		) AS existing ON existing.name = names.n
-		WHERE existing.name IS NULL
-	)
-	INSERT INTO Authors(name)
-	SELECT n FROM filtered_names
-	`
-	if _, err := p.tx.Exec(newAuthorsQuery, args...); err != nil {
+	authStmt, err := p.tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
+	if err != nil {
 		return err
 	}
+	defer authStmt.Close()
 
-	docAuthorsQuery := namesCTE + fmt.Sprintf(`
-	matched_authors AS (
-		SELECT Authors.id AS author_id
-		FROM Authors
-		LEFT JOIN Aliases ON Authors.id = Aliases.authorId
-		JOIN names ON Authors.name = n OR Aliases.alias = n
-	)
-	INSERT INTO DocumentAuthors(docId, authorId)
-	SELECT %d, author_id FROM matched_authors
-	`, p.Id)
-	if _, err := p.tx.Exec(docAuthorsQuery, args...); err != nil {
+	idStmt, err := p.tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	if err != nil {
 		return err
+	}
+	defer idStmt.Close()
+
+	docAuthStmt, err := p.tx.Prepare(
+		fmt.Sprintf("INSERT INTO DocumentAuthors(docId,authorId) VALUES (%d,?)", p.Id),
+	)
+	if err != nil {
+		return err
+	}
+	defer docAuthStmt.Close()
+
+	// sqlite is fast, and i'm too lazy to batch this
+	var authId int64
+	for _, author := range p.Doc.Authors {
+		if _, err := authStmt.Exec(author); err != nil {
+			return err
+		}
+		if err := idStmt.QueryRow(author).Scan(&authId); err != nil {
+			return err
+		}
+		if _, err := docAuthStmt.Exec(authId); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -325,90 +323,38 @@ func (p PutMany) authors(ctx context.Context) error {
 		return err
 	}
 
-	_, err = tx.Exec("CREATE TEMPORARY TABLE names (name TEXT UNIQUE NOT NULL)")
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	defer p.db.Exec("DROP TABLE IF EXISTS temp.names")
-
-	nameStmt, err := tx.Prepare("INSERT OR IGNORE INTO temp.names VALUES (?)")
+	authStmt, err := tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
 	if err != nil {
 		return err
 	}
-	defer nameStmt.Close()
+	defer authStmt.Close()
 
-	txNameStmt := tx.StmtContext(ctx, nameStmt)
-	for _, doc := range p.Docs {
-		if len(doc.Authors) == 0 {
-			continue
-		}
-		for _, name := range doc.Authors {
-			if _, err := txNameStmt.Exec(name); err != nil {
-				tx.Rollback()
+	idStmt, err := tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	if err != nil {
+		return err
+	}
+	defer idStmt.Close()
+
+	docAuthStmt, err := tx.Prepare("INSERT INTO DocumentAuthors(docId,authorId) VALUES (?,?)")
+	if err != nil {
+		return err
+	}
+	defer docAuthStmt.Close()
+
+	var authId int64
+	for docId, doc := range p.Docs {
+		for _, author := range doc.Authors {
+			if _, err := authStmt.Exec(author); err != nil {
+				return err
+			}
+			if err := idStmt.QueryRow(author).Scan(&authId); err != nil {
+				return err
+			}
+			if _, err := docAuthStmt.Exec(docId, authId); err != nil {
 				return err
 			}
 		}
-	}
 
-	newAuthorsQuery := `
-	WITH new_names AS (
-		SELECT temp.names.name
-		FROM temp.names
-		LEFT JOIN (
-			SELECT * FROM Authors
-			UNION ALL
-			SELECT * FROM Aliases
-		) AS existing ON existing.name = temp.names.name
-		WHERE existing.name IS NULL
-	)
-	INSERT INTO Authors(name)
-	SELECT name FROM new_names
-	`
-
-	if _, err := tx.Exec(newAuthorsQuery); err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	_, err = tx.Exec(`
-	CREATE TEMPORARY TABLE name_ids AS
-		SELECT names.name AS name, existing.id AS authorId
-		FROM temp.names
-		LEFT JOIN (
-			SELECT * FROM Authors
-			UNION ALL
-			SELECT * FROM Aliases
-		) AS existing ON existing.name = temp.names.name
-	`)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	defer p.db.Exec("DROP TABLE IF EXISTS temp.name_ids")
-
-	docAuthorsStmt, err := tx.Prepare(`
-	INSERT INTO DocumentAuthors (docId, authorId)
-	SELECT ?, authorId
-	FROM temp.name_ids
-	WHERE name = ?
-	`)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	defer docAuthorsStmt.Close()
-
-	for id, doc := range p.Docs {
-		if len(doc.Authors) == 0 {
-			continue
-		}
-		for _, name := range doc.Authors {
-			if _, err := tx.Stmt(docAuthorsStmt).Exec(id, name); err != nil {
-				tx.Rollback()
-				return err
-			}
-		}
 	}
 
 	return tx.Commit()

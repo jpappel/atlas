@@ -29,13 +29,6 @@ func singleDoc(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
-	INSERT INTO Aliases (authorId, alias)
-	VALUES (1,"pj"), (1,"JP")
-	`); err != nil {
-		t.Fatal("err inserting aliases:", err)
-	}
-
-	if _, err := db.Exec(`
 	INSERT INTO Tags (name)
 	VALUES ("foo"), ("bar"), ("baz"), ("oof")
 	`); err != nil {
@@ -83,13 +76,6 @@ func multiDoc(t *testing.T) *sql.DB {
 	VALUES ("jp"), ("anonymous")
 	`); err != nil {
 		t.Fatal("err inserting author:", err)
-	}
-
-	if _, err := db.Exec(`
-	INSERT INTO Aliases (authorId, alias)
-	VALUES (1,"pj"), (1,"JP")
-	`); err != nil {
-		t.Fatal("err inserting aliases:", err)
 	}
 
 	if _, err := db.Exec(`

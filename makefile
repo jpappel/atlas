@@ -1,4 +1,5 @@
 BINS := atlas
+BUILD_TAGS := icu fts5
 SRC := main.go $(wildcard cmd/*.go) $(wildcard pkg/*/*.go)
 INSTALL_PATH := ~/.local/bin
 
@@ -7,10 +8,10 @@ INSTALL_PATH := ~/.local/bin
 all: $(BINS)
 
 atlas: $(SRC)
-	go build -o $@ $<
+	go build -tags "$(BUILD_TAGS)" -o $@ $<
 
 test:
-	go test ./...
+	go test -tags "$(BUILD_TAGS)" ./...
 
 ########
 #
@@ -32,6 +33,7 @@ info:
 	@echo "SRC: $(SRC)"
 	@echo "BINS: $(BINS)"
 	@echo "INSTALL_PATH: $(INSTALL_PATH)"
+	@echo "BUILD_TAGS: $(BUILD_TAGS)"
 
 clean:
 	rm -f $(BINS) *.db *.db-shm *.db-wal

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -265,8 +266,53 @@ func TestUpdateMany_Update(t *testing.T) {
 				return a.Equal(*b)
 			}) {
 				t.Error("Got different docs than expected")
-				t.Logf("Got:\n%+v\n", docs)
-				t.Logf("Want:\n%+v\n", tt.docs)
+				if len(docs) != len(tt.docs) {
+					t.Logf("Wanted %d docs, got %d", len(tt.docs), len(docs))
+				}
+
+				for path, wantDoc := range tt.docs {
+					gotDoc, ok := docs[path]
+					if !ok {
+						t.Logf("Wanted doc at %s but did not recieve it", path)
+						continue
+					} else if wantDoc.Equal(*gotDoc) {
+						continue
+					}
+
+					t.Log("Doc: ", path)
+					if wantDoc.Title != gotDoc.Title {
+						t.Log("want Title:", wantDoc.Title)
+						t.Log("Got Title:", gotDoc.Title)
+					}
+					if !wantDoc.Date.Equal(gotDoc.Date) {
+						t.Log("want Date:", wantDoc.Date)
+						t.Log("got Date:", gotDoc.Date)
+					}
+					if !wantDoc.FileTime.Equal(gotDoc.FileTime) {
+						t.Log("want filetime:", wantDoc.FileTime)
+						t.Log("got filetime:", gotDoc.FileTime)
+					}
+					if !slices.Equal(wantDoc.Authors, gotDoc.Authors) {
+						t.Log("want authors:", wantDoc.Authors)
+						t.Log("got authors:", gotDoc.Authors)
+					}
+					if !slices.Equal(wantDoc.Tags, gotDoc.Tags) {
+						t.Log("want tags:", wantDoc.Tags)
+						t.Log("got tags:", gotDoc.Tags)
+					}
+					if !slices.Equal(wantDoc.Links, gotDoc.Links) {
+						t.Log("want links:", wantDoc.Links)
+						t.Log("got links:", gotDoc.Links)
+					}
+					if wantDoc.Headings != gotDoc.Headings {
+						t.Log("want headings:", wantDoc.Headings)
+						t.Log("got headings:", gotDoc.Headings)
+					}
+					if wantDoc.OtherMeta != gotDoc.OtherMeta {
+						t.Log("want meta:", wantDoc.OtherMeta)
+						t.Log("got meta:", gotDoc.OtherMeta)
+					}
+				}
 			}
 		})
 	}

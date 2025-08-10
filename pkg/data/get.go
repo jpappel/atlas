@@ -17,7 +17,7 @@ type Fill struct {
 	doc  *index.Document
 }
 
-// Use to build documents and aliases from a database connection
+// Use to build documents from a database connection
 type FillMany struct {
 	docs map[string]*index.Document
 	ids  map[string]int

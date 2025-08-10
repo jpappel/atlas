@@ -126,17 +126,6 @@ func createSchema(db *sql.DB, version string) error {
 	}
 
 	_, err = tx.Exec(`
-	CREATE TABLE IF NOT EXISTS Aliases(
-		authorId INT NOT NULL,
-		alias TEXT UNIQUE NOT NULL,
-		FOREIGN KEY (authorId) REFERENCES Authors(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	_, err = tx.Exec(`
 	CREATE TABLE IF NOT EXISTS Tags(
 		id INTEGER PRIMARY KEY,
 		name TEXT UNIQUE NOT NULL
@@ -201,18 +190,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_aliases_alias ON Aliases(alias)")
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_aliases_authorId ON Aliases(authorId)")
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
 	_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_links_link ON Links(link)")
 	if err != nil {
 		tx.Rollback()
@@ -226,12 +203,45 @@ func createSchema(db *sql.DB, version string) error {
 	}
 
 	_, err = tx.Exec(`
-	CREATE TRIGGER IF NOT EXISTS trig_new_author
-	BEFORE INSERT ON Authors
+	CREATE VIRTUAL TABLE IF NOT EXISTS Documents_fts
+	USING fts5 (
+		path, headings, title, meta, content=Documents, content_rowid=id
+	)
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE VIRTUAL TABLE IF NOT EXISTS Authors_fts
+	USING fts5 (
+		name, content=Authors, content_rowid=id
+	)
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE VIRTUAL TABLE IF NOT EXISTS Tags_fts
+	USING fts5 (
+		name, content=Tags, content_rowid=id
+	)
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ai_authors
+	AFTER INSERT ON Authors
 	BEGIN
-		SELECT CASE WHEN NEW.name IN (SELECT alias FROM Aliases) THEN
-			RAISE(IGNORE)
-		END;
+		INSERT INTO Authors_fts(rowid, name)
+		VALUES (new.id, new.name);
 	END
 	`)
 	if err != nil {
@@ -240,12 +250,11 @@ func createSchema(db *sql.DB, version string) error {
 	}
 
 	_, err = tx.Exec(`
-	CREATE TRIGGER IF NOT EXISTS trig_new_alias
-	BEFORE INSERT ON Aliases
+	CREATE TRIGGER IF NOT EXISTS trig_ad_authors
+	AFTER DELETE ON Authors
 	BEGIN
-		SELECT CASE WHEN NEW.alias IN (SELECT name FROM Authors) THEN
-			RAISE(IGNORE)
-		END;
+		INSERT INTO Authors_fts(Authors_fts, rowid, name)
+		VALUES ('delete', old.id, old.name);
 	END
 	`)
 	if err != nil {
@@ -253,23 +262,125 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_au_authors
+	AFTER UPDATE ON Authors
+	BEGIN
+		INSERT INTO Authors_fts(Authors_fts, rowid, name)
+		VALUES ('delete', old.id, old.name);
+		INSERT INTO Authors_fts(rowid, name)
+		VALUES (new.id, new.name);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ai_tags
+	AFTER INSERT ON Tags
+	BEGIN
+		INSERT INTO Tags_fts(rowid, name)
+		VALUES (new.id, new.name);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ad_tags
+	AFTER DELETE ON Tags
+	BEGIN
+		INSERT INTO Tags_fts(Tags_fts, rowid, name)
+		VALUES ('delete', old.id, old.name);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_au_tags
+	AFTER UPDATE ON Tags
+	BEGIN
+		INSERT INTO Tags_fts(Tags_fts, rowid, name)
+		VALUES ('delete', old.id, old.name);
+		INSERT INTO Tags_fts(rowid, name)
+		VALUES (new.id, new.name);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ai_doc
+	AFTER INSERT ON Documents
+	BEGIN
+		INSERT INTO Documents_fts(rowid, path, headings, title, meta)
+		VALUES (new.id, new.path, new.headings, new.title, new.meta);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ad_doc
+	AFTER DELETE ON Documents
+	BEGIN
+		INSERT INTO Documents_fts(Documents_fts, rowid, path, headings, title, meta)
+		VALUES ('delete', old.id, old.path, old.headings, old.title, old.meta);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_au_doc
+	AFTER UPDATE ON Documents
+	BEGIN
+		INSERT INTO Documents_fts(Documents_fts, rowid, path, headings, title, meta)
+		VALUES ('delete', old.id, old.path, old.headings, old.title, old.meta);
+		INSERT INTO Documents_fts(rowid, path, headings, title, meta)
+		VALUES (new.id, new.path, new.headings, new.title, new.meta);
+	END
+	`)
+	if err != nil {
+		return err
+	}
+
+	// TODO: update to use fts tables
 	_, err = tx.Exec(`
 	CREATE VIEW IF NOT EXISTS Search AS
 	SELECT
 		d.id AS docId,
-		d.path,
-		d.title,
+		d_fts.path,
+		d_fts.title,
 		d.date,
 		d.fileTime,
-		d.headings,
-		d.meta,
-		COALESCE(a.name, al.alias) AS author,
+		d_fts.headings,
+		d_fts.meta,
+		a_fts.name AS author,
 		t.name AS tag,
 		l.link
 	FROM Documents d
+	JOIN Documents_fts as d_fts ON d.id = d_fts.rowid
 	LEFT JOIN DocumentAuthors da ON d.id = da.docId
-	LEFT JOIN Authors a ON da.authorId = a.id
-	LEFT JOIN Aliases al ON a.id = al.authorId
+	LEFT JOIN Authors_fts a_fts ON da.authorId = a_fts.rowid
 	LEFT JOIN DocumentTags dt ON d.id = dt.docId
 	LEFT JOIN Tags t ON dt.tagId = t.id
 	LEFT JOIN Links l ON d.id = l.docId
@@ -339,7 +450,7 @@ func (q Query) GetDocument(ctx context.Context, path string) (*index.Document, e
 	return f.Get(ctx)
 }
 
-// Shrink database by removing unused authors, aliases, tags and VACUUM-ing
+// Shrink database by removing unused authors and tags and VACUUM-ing
 func (q Query) Tidy() error {
 	if _, err := q.db.Exec(`
 	DELETE FROM Authors
@@ -359,6 +470,16 @@ func (q Query) Tidy() error {
 	}
 
 	if _, err := q.db.Exec("VACUUM"); err != nil {
+		return err
+	}
+
+	if _, err := q.db.Exec("INSERT INTO Documents_fts(Documents_fts) VALUES('optimize')"); err != nil {
+		return err
+	}
+	if _, err := q.db.Exec("INSERT INTO Authors_fts(Authors_fts) VALUES('optimize')"); err != nil {
+		return err
+	}
+	if _, err := q.db.Exec("INSERT INTO Tags_fts(Tags_fts) VALUES('optimize')"); err != nil {
 		return err
 	}
 

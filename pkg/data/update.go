@@ -390,46 +390,37 @@ func (u Update) authors() error {
 		return err
 	}
 
-	tempTable, args := BatchQuery(`
-		CREATE TEMPORARY TABLE new_names AS
-		SELECT column1 AS name
-		FROM ( VALUES `,
-		"", "(?)", ",", ")",
-		len(u.Doc.Authors), u.Doc.Authors,
+	authStmt, err := u.tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
+	if err != nil {
+		return err
+	}
+	defer authStmt.Close()
+
+	idStmt, err := u.tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	if err != nil {
+		return err
+	}
+	defer idStmt.Close()
+
+	docAuthStmt, err := u.tx.Prepare(
+		fmt.Sprintf("INSERT INTO DocumentAuthors(docId,authorId) VALUES (%d,?)", u.Id),
 	)
-	_, err := u.tx.Exec(tempTable, args...)
 	if err != nil {
 		return err
 	}
-	defer u.tx.Exec("DROP TABLE temp.new_names")
+	defer docAuthStmt.Close()
 
-	_, err = u.tx.Exec(`
-	INSERT OR IGNORE INTO Authors(name)
-	SELECT * FROM new_names
-	`)
-	if err != nil {
-		return err
-	}
-	_, err = u.tx.Exec(`
-	INSERT OR IGNORE INTO Aliases(alias)
-	SELECT * FROM new_names
-	`)
-	if err != nil {
-		return err
-	}
-
-	docAuthQuery := fmt.Sprintf(`
-	INSERT INTO DocumentAuthors
-	SELECT %d, existing.id
-	FROM new_names
-	LEFT JOIN (
-		SELECT * FROM Authors
-		UNION ALL
-		SELECT * FROM Aliases
-	) AS existing ON existing.name = new_names.name
-	`, u.Id)
-	if _, err := u.tx.Exec(docAuthQuery); err != nil {
-		return err
+	var authId int64
+	for _, author := range u.Doc.Authors {
+		if _, err := authStmt.Exec(author); err != nil {
+			return err
+		}
+		if err := idStmt.QueryRow(author).Scan(&authId); err != nil {
+			return err
+		}
+		if _, err := docAuthStmt.Exec(authId); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -442,61 +433,42 @@ func (u UpdateMany) authors() error {
 	}
 	defer deleteStmt.Close()
 
-	_, err = u.tx.Exec(`
-	CREATE TEMPORARY TABLE new_names (
-		docId INTEGER NOT NULL,
-		name TEXT NOT NULL,
-		UNIQUE(docId, name)
-	)`)
+	authStmt, err := u.tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
 	if err != nil {
 		return err
 	}
-	defer u.tx.Exec("DROP TABLE temp.new_names")
+	defer authStmt.Close()
 
-	insertTempTable, err := u.tx.Prepare("INSERT INTO temp.new_names VALUES (?,?)")
+	idStmt, err := u.tx.Prepare("SELECT id FROM Authors WHERE name = ?")
 	if err != nil {
 		return err
 	}
-	defer insertTempTable.Close()
+	defer idStmt.Close()
 
-	for id, doc := range u.Docs {
-		if _, err := deleteStmt.Exec(id); err != nil {
+	docAuthStmt, err := u.tx.Prepare("INSERT INTO DocumentAuthors(docId,authorId) VALUES (?,?)")
+	if err != nil {
+		return err
+	}
+	defer docAuthStmt.Close()
+
+	var authId int64
+	for docId, doc := range u.Docs {
+		if _, err := deleteStmt.Exec(docId); err != nil {
 			return err
 		}
-
 		for _, author := range doc.Authors {
-			if _, err := insertTempTable.Exec(id, author); err != nil {
+			if _, err := authStmt.Exec(author); err != nil {
+				return err
+			}
+			if err := idStmt.QueryRow(author).Scan(&authId); err != nil {
+				return err
+			}
+			if _, err := docAuthStmt.Exec(docId, authId); err != nil {
 				return err
 			}
 		}
-	}
 
-	_, err = u.tx.Exec(`
-	INSERT OR IGNORE INTO Authors(name)
-	SELECT name FROM new_names
-	`)
-	if err != nil {
-		return err
 	}
-
-	_, err = u.tx.Exec(`
-	INSERT OR IGNORE INTO Aliases(alias)
-	SELECT name FROM new_names
-	`)
-	if err != nil {
-		return err
-	}
-
-	_, err = u.tx.Exec(`
-	INSERT INTO DocumentAuthors
-	SELECT docId, existing.id
-	FROM new_names
-	LEFT JOIN (
-	SELECT * FROM Authors
-	UNION ALL
-	SELECT * FROM Aliases
-	) AS existing ON existing.name = new_names.name
-	`)
 
 	return err
 }
