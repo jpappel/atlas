@@ -171,7 +171,7 @@ func (p Put) tags() error {
 		return nil
 	}
 
-	query, args := BatchQuery("INSERT OR IGNORE INTO Tags (name) VALUES", "", "(?)", ",", "", len(p.Doc.Tags), p.Doc.Tags)
+	query, args := BatchQuery("INSERT OR IGNORE INTO Tags (tag) VALUES", "", "(?)", ",", "", len(p.Doc.Tags), p.Doc.Tags)
 	if _, err := p.tx.Exec(query, args...); err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func (p Put) tags() error {
 	INSERT INTO DocumentTags
 		SELECT %d, Tags.id
 		FROM Tags
-		WHERE name IN
+		WHERE tag IN
 	`, p.Id)
 
 	query, args = BatchQuery(preQuery, "(", "?", ",", ")", len(p.Doc.Tags), p.Doc.Tags)
@@ -197,7 +197,7 @@ func (p PutMany) tags(ctx context.Context) error {
 		return err
 	}
 
-	txNewTagStmt, err := tx.Prepare("INSERT OR IGNORE INTO Tags (name) VALUES (?)")
+	txNewTagStmt, err := tx.Prepare("INSERT OR IGNORE INTO Tags (tag) VALUES (?)")
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -219,7 +219,7 @@ func (p PutMany) tags(ctx context.Context) error {
 		INSERT INTO DocumentTags (docId, tagId)
 			SELECT %d, Tags.id
 			FROM Tags
-			WHERE name IN
+			WHERE tag IN
 		`, id)
 		query, args := BatchQuery(preQuery, "(", "?", ",", ")", len(doc.Tags), doc.Tags)
 		if _, err := tx.Exec(query, args...); err != nil {
@@ -280,13 +280,13 @@ func (p Put) authors() error {
 		return nil
 	}
 
-	authStmt, err := p.tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
+	authStmt, err := p.tx.Prepare("INSERT OR IGNORE INTO Authors(author) VALUES(?)")
 	if err != nil {
 		return err
 	}
 	defer authStmt.Close()
 
-	idStmt, err := p.tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	idStmt, err := p.tx.Prepare("SELECT id FROM Authors WHERE author = ?")
 	if err != nil {
 		return err
 	}
@@ -323,13 +323,13 @@ func (p PutMany) authors(ctx context.Context) error {
 		return err
 	}
 
-	authStmt, err := tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
+	authStmt, err := tx.Prepare("INSERT OR IGNORE INTO Authors(author) VALUES(?)")
 	if err != nil {
 		return err
 	}
 	defer authStmt.Close()
 
-	idStmt, err := tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	idStmt, err := tx.Prepare("SELECT id FROM Authors WHERE author = ?")
 	if err != nil {
 		return err
 	}

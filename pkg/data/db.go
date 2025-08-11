@@ -118,7 +118,7 @@ func createSchema(db *sql.DB, version string) error {
 	_, err = tx.Exec(`
 	CREATE TABLE IF NOT EXISTS Authors(
 		id INTEGER PRIMARY KEY,
-		name TEXT UNIQUE NOT NULL
+		author TEXT UNIQUE NOT NULL
 	)`)
 	if err != nil {
 		tx.Rollback()
@@ -128,7 +128,7 @@ func createSchema(db *sql.DB, version string) error {
 	_, err = tx.Exec(`
 	CREATE TABLE IF NOT EXISTS Tags(
 		id INTEGER PRIMARY KEY,
-		name TEXT UNIQUE NOT NULL
+		tag TEXT UNIQUE NOT NULL
 	)`)
 	if err != nil {
 		tx.Rollback()
@@ -205,7 +205,7 @@ func createSchema(db *sql.DB, version string) error {
 	_, err = tx.Exec(`
 	CREATE VIRTUAL TABLE IF NOT EXISTS Documents_fts
 	USING fts5 (
-		path, headings, title, meta, content=Documents, content_rowid=id
+		path, headings, title, meta, content=Documents, content_rowid=id, tokenize="trigram"
 	)
 	`)
 	if err != nil {
@@ -216,7 +216,7 @@ func createSchema(db *sql.DB, version string) error {
 	_, err = tx.Exec(`
 	CREATE VIRTUAL TABLE IF NOT EXISTS Authors_fts
 	USING fts5 (
-		name, content=Authors, content_rowid=id
+		author, content=Authors, content_rowid=id, tokenize="trigram"
 	)
 	`)
 	if err != nil {
@@ -227,7 +227,7 @@ func createSchema(db *sql.DB, version string) error {
 	_, err = tx.Exec(`
 	CREATE VIRTUAL TABLE IF NOT EXISTS Tags_fts
 	USING fts5 (
-		name, content=Tags, content_rowid=id
+		tag, content=Tags, content_rowid=id, tokenize="trigram"
 	)
 	`)
 	if err != nil {
@@ -235,13 +235,20 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
+	_, err = tx.Exec(`
+	CREATE VIRTUAL TABLE IF NOT EXISTS Links_fts
+	USING fts5 (
+		link, docId UNINDEXED,content=Links, tokenize="trigram"
+	)
+	`)
+
 	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_ai_authors
 	AFTER INSERT ON Authors
 	BEGIN
-		INSERT INTO Authors_fts(rowid, name)
-		VALUES (new.id, new.name);
+		INSERT INTO Authors_fts(rowid, author)
+		VALUES (new.id, new.author);
 	END
 	`)
 	if err != nil {
@@ -253,8 +260,8 @@ func createSchema(db *sql.DB, version string) error {
 	CREATE TRIGGER IF NOT EXISTS trig_ad_authors
 	AFTER DELETE ON Authors
 	BEGIN
-		INSERT INTO Authors_fts(Authors_fts, rowid, name)
-		VALUES ('delete', old.id, old.name);
+		INSERT INTO Authors_fts(Authors_fts, rowid, author)
+		VALUES ('delete', old.id, old.author);
 	END
 	`)
 	if err != nil {
@@ -267,10 +274,10 @@ func createSchema(db *sql.DB, version string) error {
 	CREATE TRIGGER IF NOT EXISTS trig_au_authors
 	AFTER UPDATE ON Authors
 	BEGIN
-		INSERT INTO Authors_fts(Authors_fts, rowid, name)
-		VALUES ('delete', old.id, old.name);
-		INSERT INTO Authors_fts(rowid, name)
-		VALUES (new.id, new.name);
+		INSERT INTO Authors_fts(Authors_fts, rowid, author)
+		VALUES ('delete', old.id, old.author);
+		INSERT INTO Authors_fts(rowid, author)
+		VALUES (new.id, new.author);
 	END
 	`)
 	if err != nil {
@@ -278,13 +285,12 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_ai_tags
 	AFTER INSERT ON Tags
 	BEGIN
-		INSERT INTO Tags_fts(rowid, name)
-		VALUES (new.id, new.name);
+		INSERT INTO Tags_fts(rowid, tag)
+		VALUES (new.id, new.tag);
 	END
 	`)
 	if err != nil {
@@ -296,8 +302,8 @@ func createSchema(db *sql.DB, version string) error {
 	CREATE TRIGGER IF NOT EXISTS trig_ad_tags
 	AFTER DELETE ON Tags
 	BEGIN
-		INSERT INTO Tags_fts(Tags_fts, rowid, name)
-		VALUES ('delete', old.id, old.name);
+		INSERT INTO Tags_fts(Tags_fts, rowid, tag)
+		VALUES ('delete', old.id, old.tag);
 	END
 	`)
 	if err != nil {
@@ -310,10 +316,52 @@ func createSchema(db *sql.DB, version string) error {
 	CREATE TRIGGER IF NOT EXISTS trig_au_tags
 	AFTER UPDATE ON Tags
 	BEGIN
-		INSERT INTO Tags_fts(Tags_fts, rowid, name)
-		VALUES ('delete', old.id, old.name);
-		INSERT INTO Tags_fts(rowid, name)
-		VALUES (new.id, new.name);
+		INSERT INTO Tags_fts(Tags_fts, rowid, tag)
+		VALUES ('delete', old.id, old.tag);
+		INSERT INTO Tags_fts(rowid, tag)
+		VALUES (new.id, new.tag);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ai_links
+	AFTER INSERT ON Links
+	BEGIN
+		INSERT INTO Links_fts(rowid, link, docId)
+		VALUES (new.rowid, new.link, new.docId);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_ad_links
+	AFTER DELETE ON Links
+	BEGIN
+		INSERT INTO Links_fts(Links_fts, rowid, link, docId)
+		VALUES ('delete', old.rowid, old.link, old.docId);
+	END
+	`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// FIXME: doesn't set new.id
+	_, err = tx.Exec(`
+	CREATE TRIGGER IF NOT EXISTS trig_au_links
+	AFTER UPDATE ON Links
+	BEGIN
+		INSERT INTO Links_fts(Links_fts, rowid, link, docId)
+		VALUES ('delete', old.rowid, old.link, old.docId);
+		INSERT INTO Links_fts(rowid, link, docId)
+		VALUES (new.rowid, new.link, new.docId);
 	END
 	`)
 	if err != nil {
@@ -363,7 +411,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// TODO: update to use fts tables
 	_, err = tx.Exec(`
 	CREATE VIEW IF NOT EXISTS Search AS
 	SELECT
@@ -374,16 +421,16 @@ func createSchema(db *sql.DB, version string) error {
 		d.fileTime,
 		d_fts.headings,
 		d_fts.meta,
-		a_fts.name AS author,
-		t.name AS tag,
-		l.link
+		a_fts.author,
+		t_fts.tag,
+		l_fts.link
 	FROM Documents d
 	JOIN Documents_fts as d_fts ON d.id = d_fts.rowid
 	LEFT JOIN DocumentAuthors da ON d.id = da.docId
 	LEFT JOIN Authors_fts a_fts ON da.authorId = a_fts.rowid
 	LEFT JOIN DocumentTags dt ON d.id = dt.docId
-	LEFT JOIN Tags t ON dt.tagId = t.id
-	LEFT JOIN Links l ON d.id = l.docId
+	LEFT JOIN Tags_fts t_fts ON dt.tagId = t_fts.rowid
+	LEFT JOIN Links_fts l_fts ON d.id = l_fts.docId
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -517,9 +564,15 @@ func (q Query) Execute(ctx context.Context, artifact query.CompilationArtifact) 
 	}
 
 	compiledQuery := fmt.Sprintf(`
-	SELECT DISTINCT docId, path, title, date, fileTime, headings, meta
-	FROM Search
-	WHERE %s`, artifact.Query)
+	SELECT id, d.path, d.title, d.date, d.fileTime, d.headings, d.meta
+	FROM Documents d
+	JOIN (
+		SELECT DISTINCT docId
+		FROM Search
+		WHERE %s
+	) s
+	ON d.id = s.docId
+	`, artifact.Query)
 
 	rows, err := q.db.QueryContext(ctx, compiledQuery, artifact.Args...)
 	if err != nil {

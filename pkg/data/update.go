@@ -263,7 +263,7 @@ func (u Update) tags() error {
 	}
 
 	query, args := BatchQuery(
-		"INSERT OR IGNORE INTO Tags (name) VALUES",
+		"INSERT OR IGNORE INTO Tags (tag) VALUES",
 		"", "(?)", ",", "",
 		len(u.Doc.Tags), u.Doc.Tags,
 	)
@@ -275,7 +275,7 @@ func (u Update) tags() error {
 	INSERT INTO DocumentTags
 		SELECT %d, Tags.id
 		FROM Tags
-		WHERE name in
+		WHERE tag in
 	`, u.Id)
 	query, args = BatchQuery(
 		preqQuery, "(", "?", ",", ")",
@@ -308,7 +308,7 @@ func (u UpdateMany) tags() error {
 			continue
 		}
 		insertTag, args := BatchQuery(
-			"INSERT OR IGNORE INTO Tags (name) VALUES",
+			"INSERT OR IGNORE INTO Tags (tag) VALUES",
 			"", "(?)", ",", "",
 			len(doc.Tags), doc.Tags,
 		)
@@ -321,7 +321,7 @@ func (u UpdateMany) tags() error {
 		INSERT INTO DocumentTags
 			SELECT %d, Tags.id
 			FROM Tags
-			WHERE name in
+			WHERE tag in
 		`, id)
 		setDocTags, _ := BatchQuery(
 			preqQuery, "(", "?", ",", ")",
@@ -390,13 +390,13 @@ func (u Update) authors() error {
 		return err
 	}
 
-	authStmt, err := u.tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
+	authStmt, err := u.tx.Prepare("INSERT OR IGNORE INTO Authors(author) VALUES(?)")
 	if err != nil {
 		return err
 	}
 	defer authStmt.Close()
 
-	idStmt, err := u.tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	idStmt, err := u.tx.Prepare("SELECT id FROM Authors WHERE author = ?")
 	if err != nil {
 		return err
 	}
@@ -433,13 +433,13 @@ func (u UpdateMany) authors() error {
 	}
 	defer deleteStmt.Close()
 
-	authStmt, err := u.tx.Prepare("INSERT OR IGNORE INTO Authors(name) VALUES(?)")
+	authStmt, err := u.tx.Prepare("INSERT OR IGNORE INTO Authors(author) VALUES(?)")
 	if err != nil {
 		return err
 	}
 	defer authStmt.Close()
 
-	idStmt, err := u.tx.Prepare("SELECT id FROM Authors WHERE name = ?")
+	idStmt, err := u.tx.Prepare("SELECT id FROM Authors WHERE author = ?")
 	if err != nil {
 		return err
 	}

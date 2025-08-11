@@ -167,7 +167,7 @@ func (f *FillMany) documents(ctx context.Context, rows *sql.Rows) error {
 }
 func (f Fill) authors(ctx context.Context) error {
 	rows, err := f.Db.QueryContext(ctx, `
-	SELECT name
+	SELECT author
 	FROM Authors
 	JOIN DocumentAuthors
 	ON Authors.id = DocumentAuthors.authorId
@@ -178,13 +178,13 @@ func (f Fill) authors(ctx context.Context) error {
 	}
 	defer rows.Close()
 
-	var name string
+	var author string
 	authors := make([]string, 0, 4)
 	for rows.Next() {
-		if err := rows.Scan(&name); err != nil {
+		if err := rows.Scan(&author); err != nil {
 			return err
 		}
-		authors = append(authors, name)
+		authors = append(authors, author)
 	}
 
 	f.doc.Authors = authors
@@ -194,7 +194,7 @@ func (f Fill) authors(ctx context.Context) error {
 
 func (f FillMany) authors(ctx context.Context) error {
 	stmt, err := f.Db.PrepareContext(ctx, `
-	SELECT name
+	SELECT author
 	FROM Authors
 	JOIN DocumentAuthors
 	ON Authors.id = DocumentAuthors.authorId
@@ -206,7 +206,7 @@ func (f FillMany) authors(ctx context.Context) error {
 	defer stmt.Close()
 
 	// PERF: parallelize
-	var name string
+	var author string
 	for path, id := range f.ids {
 		rows, err := stmt.QueryContext(ctx, id)
 		if err != nil {
@@ -215,12 +215,12 @@ func (f FillMany) authors(ctx context.Context) error {
 
 		doc := f.docs[path]
 		for rows.Next() {
-			if err := rows.Scan(&name); err != nil {
+			if err := rows.Scan(&author); err != nil {
 				rows.Close()
 				return err
 			}
 
-			doc.Authors = append(doc.Authors, name)
+			doc.Authors = append(doc.Authors, author)
 		}
 
 		rows.Close()
@@ -231,7 +231,7 @@ func (f FillMany) authors(ctx context.Context) error {
 
 func (f Fill) tags(ctx context.Context) error {
 	rows, err := f.Db.QueryContext(ctx, `
-	SELECT name
+	SELECT tag
 	FROM Tags
 	JOIN DocumentTags
 	ON Tags.id = DocumentTags.tagId
@@ -258,7 +258,7 @@ func (f Fill) tags(ctx context.Context) error {
 
 func (f FillMany) tags(ctx context.Context) error {
 	stmt, err := f.Db.PrepareContext(ctx, `
-	SELECT name
+	SELECT tag
 	FROM Tags
 	JOIN DocumentTags
 	ON Tags.id = DocumentTags.tagId

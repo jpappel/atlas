@@ -146,6 +146,8 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				b.WriteString(") ")
 			} else if cat.IsSet() && op == OP_AP {
 				b.WriteString("( ")
+				b.WriteString(catStr)
+				b.WriteString("IS NOT NULL AND ")
 				idx := 0
 				for _, stmt := range opStmts {
 					b.WriteString(catStr)
@@ -188,6 +190,11 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				}
 			} else {
 				idx := 0
+				if op == OP_AP {
+					b.WriteString("( ")
+					b.WriteString(catStr)
+					b.WriteString("IS NOT NULL AND ")
+				}
 				for _, stmt := range opStmts {
 					if stmt.Negated {
 						b.WriteString("NOT ")
@@ -205,6 +212,9 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 					}
 					idx++
 					sCount++
+				}
+				if op == OP_AP {
+					b.WriteString(") ")
 				}
 			}
 

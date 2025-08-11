@@ -22,14 +22,14 @@ func singleDoc(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
-	INSERT INTO Authors (name)
+	INSERT INTO Authors (author)
 	VALUES ("jp")
 	`); err != nil {
 		t.Fatal("err inserting author:", err)
 	}
 
 	if _, err := db.Exec(`
-	INSERT INTO Tags (name)
+	INSERT INTO Tags (tag)
 	VALUES ("foo"), ("bar"), ("baz"), ("oof")
 	`); err != nil {
 		t.Fatal("err inserting tags:", err)
@@ -72,14 +72,14 @@ func multiDoc(t *testing.T) *sql.DB {
 	}
 
 	if _, err := db.Exec(`
-	INSERT INTO Authors (name)
+	INSERT INTO Authors (author)
 	VALUES ("jp"), ("anonymous")
 	`); err != nil {
 		t.Fatal("err inserting author:", err)
 	}
 
 	if _, err := db.Exec(`
-	INSERT INTO Tags (name)
+	INSERT INTO Tags (tag)
 	VALUES ("foo"), ("bar"), ("baz"), ("oof")
 	`); err != nil {
 		t.Fatal("err inserting tags:", err)

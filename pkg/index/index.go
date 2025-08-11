@@ -253,7 +253,7 @@ func workerTraverse(wg *sync.WaitGroup, ignoreHidden bool, visitQueue chan InfoP
 }
 
 func (idx Index) Traverse(numWorkers uint, ignoreHidden bool) []string {
-	if numWorkers <= 1 {
+	if numWorkers == 0 {
 		panic(fmt.Sprint("Invalid number of workers: ", numWorkers))
 	}
 	docs := make([]string, 0)
