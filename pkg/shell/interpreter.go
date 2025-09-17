@@ -71,6 +71,7 @@ const (
 	ITOK_CMD_PARSE
 	ITOK_CMD_COMPILE
 	ITOK_CMD_EXECUTE
+	ITOK_CMD_QUERY
 )
 
 type IToken struct {
@@ -110,10 +111,22 @@ var commands = map[string]ITokType{
 	"env":       ITOK_CMD_ENV,
 	"compile":   ITOK_CMD_COMPILE,
 	"execute":   ITOK_CMD_EXECUTE,
+	"query":     ITOK_CMD_QUERY,
 	"+":         ITOK_ARI_ADD,
 	"-":         ITOK_ARI_SUB,
 	"*":         ITOK_ARI_MUL,
 	"/":         ITOK_ARI_IDIV,
+}
+
+var aliases = map[ITokType][]IToken{
+	ITOK_CMD_QUERY: {
+		{Type: ITOK_CMD_EXECUTE},
+		{Type: ITOK_CMD_COMPILE},
+		{Type: ITOK_CMD_LVL_OPTIMIZE},
+		{Type: ITOK_VAL_INT, Text: "0"},
+		{Type: ITOK_CMD_PARSE},
+		{Type: ITOK_CMD_TOKENIZE},
+	},
 }
 
 func NewInterpreter(initialState State, env map[string]string, workers uint, querier *data.Query) *Interpreter {
@@ -727,7 +740,11 @@ func (inter Interpreter) Tokenize(line string) []IToken {
 
 		tokType, ok := commands[trimmedWord]
 		if ok {
-			tokens = append(tokens, IToken{Type: tokType})
+			if expansion, ok := aliases[tokType]; ok {
+				tokens = append(tokens, expansion...)
+			} else {
+				tokens = append(tokens, IToken{Type: tokType})
+			}
 		} else if len(trimmedWord) > 0 && trimmedWord[0] == '`' {
 			_, strLiteral, _ := strings.Cut(word, "`")
 			tokens = append(tokens, IToken{ITOK_VAL_STR, strLiteral})
@@ -770,12 +787,12 @@ func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "exit                                  - exit interactive mode")
 	fmt.Fprintln(w, "env (string)                          - print info about environment")
 	fmt.Fprintln(w, "clear                                 - clear the screen")
-	fmt.Fprintln(w, "let name (string|tokens|clause)       - save value to a variable")
+	fmt.Fprintln(w, "let <name> (string|tokens|clause)     - save value to a variable")
 	fmt.Fprintln(w, "del [name]                            - delete a variable or all variables")
 	fmt.Fprintln(w, "print [name]                          - print a variable or all variables")
 	fmt.Fprintln(w, "slice (string|tokens) start stop      - slice a string or tokens from start to stop")
 	fmt.Fprintln(w, "len (string|tokens|clause)            - number of elements which comprise argument")
-	fmt.Fprintln(w, "at index (string|tokens|clause)       - element at index, for clauses uses depth-first ordering")
+	fmt.Fprintln(w, "at <index> (string|tokens|clause)     - element at index, for clauses uses depth-first ordering")
 	fmt.Fprintln(w, "rematch (string)                      - match against regex for querylang spec")
 	fmt.Fprintln(w, "repattern                             - print regex for querylang")
 	fmt.Fprintln(w, "tokenize (string)                     - tokenize a string")
@@ -794,6 +811,7 @@ func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "    mergeap                           - merge unordered approximate statements")
 	fmt.Fprintln(w, "compile (clause)                      - compile clause into query")
 	fmt.Fprintln(w, "execute (artifact)                    - excute the compiled query against the connected database")
+	fmt.Fprintln(w, "query (query_string)                  - alias for 'execute compile optimize 0 parse tokenize <query_string>'")
 	fmt.Fprintln(w, "\nBare commands which return a value assign to an implicit variable _")
 	fmt.Fprintln(w, "Basic integer arrithmetic (+ - * /) is supported in polish notation")
 }
