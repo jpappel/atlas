@@ -130,6 +130,10 @@ func (t queryTokenType) isCategory() bool {
 		TOK_CAT_META)
 }
 
+func (t queryTokenType) isOrdered() bool {
+	return t == TOK_CAT_DATE || t == TOK_CAT_FILETIME
+}
+
 func (t queryTokenType) isDateOperation() bool {
 	return t.Any(TOK_OP_EQ, TOK_OP_AP, TOK_OP_NE, TOK_OP_LT, TOK_OP_LE, TOK_OP_GE, TOK_OP_GT)
 }

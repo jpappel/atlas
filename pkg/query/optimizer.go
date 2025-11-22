@@ -9,9 +9,6 @@ import (
 	"github.com/jpappel/atlas/pkg/util"
 )
 
-// FIXME: any substring checks on unorderd approximate statements will fail
-// this is because quotes are added to all approximate string values
-
 type Optimizer struct {
 	workers  uint
 	root     *Clause

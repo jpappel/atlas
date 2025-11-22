@@ -14,6 +14,20 @@ import (
 	"github.com/mattn/go-sqlite3"
 )
 
+// _ = `
+// CREATE VIEW IF NOT EXISTS search2 AS
+// SELECT
+// 	*
+// FROM Documents d
+// JOIN Documents_fts AS d_fts ON d.id = d_fts.rowid
+//
+// DocumentAuthors AS da
+// JOIN Authors_fts AS a_fts ON da.authorId = a_fts.rowid
+//
+// DocumentTags AS dt
+// JOIN Tags_fts AS t_fts ON dt.tagId = t_fts.rowid
+// `
+
 type Query struct {
 	db *sql.DB
 }
@@ -242,7 +256,6 @@ func createSchema(db *sql.DB, version string) error {
 	)
 	`)
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_ai_authors
 	AFTER INSERT ON Authors
@@ -269,7 +282,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_au_authors
 	AFTER UPDATE ON Authors
@@ -311,7 +323,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_au_tags
 	AFTER UPDATE ON Tags
@@ -353,7 +364,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_au_links
 	AFTER UPDATE ON Links
@@ -369,7 +379,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_ai_doc
 	AFTER INSERT ON Documents
@@ -396,7 +405,6 @@ func createSchema(db *sql.DB, version string) error {
 		return err
 	}
 
-	// FIXME: doesn't set new.id
 	_, err = tx.Exec(`
 	CREATE TRIGGER IF NOT EXISTS trig_au_doc
 	AFTER UPDATE ON Documents

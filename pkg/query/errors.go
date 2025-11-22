@@ -16,7 +16,6 @@ var ErrExpectedMoreStringTokens = errors.New("Expected more string tokens")
 var ErrUnexpectedValueType = errors.New("Unexpected value type")
 var ErrEmptyResult = errors.New("Queries are contradictory, will lead to an empty result")
 
-
 type TokenError struct {
 	got      Token
 	gotPrev  Token

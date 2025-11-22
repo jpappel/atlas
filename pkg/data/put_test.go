@@ -45,7 +45,7 @@ func TestPut_Insert(t *testing.T) {
 			p := data.NewPut(db, tt.doc)
 			gotErr := p.Insert(t.Context())
 			if !errors.Is(gotErr, tt.wantErr) {
-				t.Fatalf("Unexpected error on Insert():, want %v got %v", tt.wantErr, gotErr)
+				t.Fatalf("Unexpected error on Insert(): want %v got %v", tt.wantErr, gotErr)
 			} else if gotErr != nil {
 				return
 			}

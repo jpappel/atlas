@@ -103,6 +103,13 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				}
 			}
 
+			// NOTE: cases
+			// cat      op
+			// any      re
+			// .isOrd   ap
+			// .isSet   !ap
+			// .isSet   ap
+			// any      any
 			if op == OP_RE {
 				idx := 0
 				for _, stmt := range opStmts {
@@ -197,6 +204,8 @@ func (s Statements) buildCompile(b *strings.Builder, delim string) ([]any, error
 				}
 				for _, stmt := range opStmts {
 					if stmt.Negated {
+						// FIXME: doesn't evaluate correctly for when using MATCH operator in SQL
+						//        a potential fix for negated statements is using an EXCEPT-like subquery
 						b.WriteString("NOT ")
 					}
 					b.WriteString(catStr)
@@ -278,7 +287,7 @@ func (c Clause) buildCompile(b *strings.Builder) ([]any, error) {
 	}
 
 	if !isRoot {
-		b.WriteString(") ")
+		b.WriteString(")")
 	}
 
 	return args, nil

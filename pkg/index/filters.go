@@ -48,10 +48,8 @@ func ParseFilter(s string) (DocFilter, error) {
 		}
 		return NewMaxFilesizeFilter(size), nil
 	case "ExcludeName", "ExcludeFilename":
-		// TODO: support escaped commas
 		return NewExcludeFilenameFilter(strings.Split(param, ",")), nil
 	case "IncludeName", "IncludeFilename":
-		// TODO: support escaped commas
 		return NewIncludeFilenameFilter(strings.Split(param, ",")), nil
 	case "ExcludeParent":
 		return NewExcludeParentFilter(param), nil
