@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/jpappel/atlas/pkg/data"
+	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
 	"github.com/jpappel/atlas/pkg/util"
 	"golang.org/x/term"
@@ -533,16 +534,18 @@ out:
 				return true, errors.New("Type corruption during compilation, expected query.CompilationArtifact")
 			}
 
-			results, err := inter.querier.Execute(context.Background(), artifact)
+			resultsMap, err := inter.querier.Execute(context.Background(), artifact)
 			if err != nil {
 				return false, fmt.Errorf("Error occured while excuting query: %s", err)
 			}
 
-			_, err = query.YamlOutput{}.OutputTo(w, slices.Collect(maps.Values(results)))
-			if err != nil {
-				return false, fmt.Errorf("Can't output results: %s", err)
-			}
-			fmt.Fprintln(w)
+			results := slices.Collect(maps.Values(resultsMap))
+			stack = append(stack, Value{VAL_RESULTS, results})
+			// _, err = query.YamlOutput{}.OutputTo(w, slices.Collect(maps.Values(results)))
+			// if err != nil {
+			// 	return false, fmt.Errorf("Can't output results: %s", err)
+			// }
+			// fmt.Fprintln(w)
 		case ITOK_VAR_NAME:
 			val, ok := inter.State[t.Text]
 			if !ok {
@@ -594,6 +597,12 @@ out:
 					return true, fmt.Errorf("Type corruption during len, expected *query.Clause")
 				}
 				length = clause.Order()
+			case VAL_RESULTS:
+				results, ok := arg.Val.([]*index.Document)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during len, expected []*index.Document")
+				}
+				length = len(results)
 			default:
 				return false, fmt.Errorf("Unable to get length of argument with type %s", arg.Type)
 			}
@@ -645,6 +654,14 @@ out:
 						}
 						pos++
 					}
+				}
+			case VAL_RESULTS:
+				if results, ok := arg.Val.([]*index.Document); !ok {
+					return true, fmt.Errorf("Type corruption during at, expecetd []*index.Document")
+				} else if idx < 0 || idx >= len(results) {
+					return false, fmt.Errorf("Index out of bounds")
+				} else {
+					stack = append(stack, Value{VAL_RESULTS, results[idx : idx+1]})
 				}
 			default:
 				return false, fmt.Errorf("Cannot index type %s", arg.Type)
@@ -702,6 +719,20 @@ out:
 					return false, fmt.Errorf(
 						"Indexes [%d:%d] out of range [0:%d]",
 						startIdx, stopIdx, len(qTokens),
+					)
+				}
+			case VAL_RESULTS:
+				results, ok := arg.Val.([]*index.Document)
+				if !ok {
+					return true, fmt.Errorf("Type corruption during slice, expected []*index.Document")
+				}
+
+				if 0 <= startIdx && startIdx <= stopIdx && stopIdx <= len(results) {
+					stack = append(stack, Value{VAL_RESULTS, results[startIdx:stopIdx]})
+				} else {
+					return false, fmt.Errorf(
+						"Indexes [%d:%d] out of range [0:%d]",
+						startIdx, stopIdx, len(results),
 					)
 				}
 			default:

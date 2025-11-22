@@ -1,9 +1,11 @@
 package shell
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
+	"github.com/jpappel/atlas/pkg/index"
 	"github.com/jpappel/atlas/pkg/query"
 )
 
@@ -16,6 +18,7 @@ const (
 	VAL_TOKENS
 	VAL_CLAUSE
 	VAL_ARTIFACT
+	VAL_RESULTS
 )
 
 type Value struct {
@@ -39,6 +42,8 @@ func (t ValueType) String() string {
 		return "Clause"
 	case VAL_ARTIFACT:
 		return "Compilation Artifact"
+	case VAL_RESULTS:
+		return "Query Result"
 	default:
 		return "Unkown"
 	}
@@ -76,6 +81,18 @@ func (v Value) String() string {
 			panic("Corrupted Type (expected query.CompilationArtifact)")
 		}
 		return artifact.String()
+	case VAL_RESULTS:
+		results, ok := v.Val.([]*index.Document)
+		if !ok {
+			panic("Corrupted Type (expected []*index.Document)")
+		}
+
+		b := bytes.Buffer{}
+		yo := query.YamlOutput{}
+		if _, err := yo.OutputTo(&b, results); err != nil {
+			panic(err)
+		}
+		return b.String()
 	case VAL_INVALID:
 		return "Invalid"
 	}
@@ -88,21 +105,24 @@ func (s State) String() string {
 	for k, v := range s {
 		b.WriteString(k)
 		b.WriteByte(':')
+		b.WriteByte(' ')
 		switch v.Type {
 		case VAL_INVALID:
-			b.WriteString(" Invalid")
+			b.WriteString("Invalid")
 		case VAL_INT:
-			b.WriteString(" Integer")
+			b.WriteString("Integer")
 		case VAL_STRING:
-			b.WriteString(" String")
+			b.WriteString("String")
 		case VAL_TOKENS:
-			b.WriteString(" Tokens")
+			b.WriteString("Tokens")
 		case VAL_CLAUSE:
-			b.WriteString(" Clause")
+			b.WriteString("Clause")
 		case VAL_ARTIFACT:
-			b.WriteString(" Artifact")
+			b.WriteString("Artifact")
+		case VAL_RESULTS:
+			b.WriteString("Results")
 		default:
-			fmt.Fprintf(&b, " Unknown (%d)", v.Val)
+			fmt.Fprintf(&b, "Unknown (%d)", v.Val)
 		}
 		b.WriteByte('\n')
 	}
