@@ -41,6 +41,20 @@ You can change the order using <pre>sortOrder</pre> with <pre>asc</pre> or <pre>
 <fieldset><legend>Submit a Query</legend>
 <label for="query">Query:</label>
 <input type="text" name="query" required />
+<label for="sortBy">Sort By:</label>
+<select name="sortBy">
+<option value="path">Path</option>
+<option value="title">Title</option>
+<option value="date">Date</option>
+<option value="headings">Headings</option>
+<option value="filetime">Filetime</option>
+<option value="meta">Metadata</option>
+</select>
+<label for="sortOrder">Sort Order:</label>
+<select name="sortOrder">
+<option value="">Ascending</option>
+<option value="desc">Descending</option>
+</select>
 <input type="submit" />
 </fieldset>
 </form>
@@ -96,8 +110,17 @@ func NewMux(db *data.Query) *http.ServeMux {
 
 		queryParams := r.URL.Query()
 		if queryParams.Has("sortBy") {
+			slog.Debug("Parsing sorting info from query params")
 			sortBy := queryParams.Get("sortBy")
 			sortOrder := queryParams.Get("sortOrder")
+			docCmp, ok := index.NewDocCmp(sortBy, sortOrder == "desc" || sortOrder == "descending")
+			if ok {
+				slices.SortFunc(docs, docCmp)
+			}
+		} else if r.Form.Has("sortBy") {
+			slog.Debug("Parsing sorting info from form data")
+			sortBy := r.Form.Get("sortBy")
+			sortOrder := r.Form.Get("sortOrder")
 			docCmp, ok := index.NewDocCmp(sortBy, sortOrder == "desc" || sortOrder == "descending")
 			if ok {
 				slices.SortFunc(docs, docCmp)
