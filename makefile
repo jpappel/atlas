@@ -11,7 +11,7 @@ atlas: $(SRC)
 	go build -tags "$(BUILD_TAGS)" -o $@ $<
 
 test:
-	go test -tags "$(BUILD_TAGS)" ./...
+	go test $(if $(subst undefined,,$(origin VIMRUNTIME)), -fullpath) -tags "$(BUILD_TAGS)" ./...
 
 ########
 #
@@ -32,6 +32,7 @@ uninstall: $(INSTALL_PATH)/atlas
 info:
 	@echo "SRC: $(SRC)"
 	@echo "BINS: $(BINS)"
+	@echo "TEST_BINS: $(TEST_BINS)"
 	@echo "INSTALL_PATH: $(INSTALL_PATH)"
 	@echo "BUILD_TAGS: $(BUILD_TAGS)"
 
