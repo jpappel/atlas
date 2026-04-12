@@ -28,10 +28,12 @@ func ParseDateTime(s string) (time.Time, error) {
 		time.RFC3339,
 	}
 
+	clean_s := strings.TrimSpace(s)
+
 	var t time.Time
 	var err error
 	for _, layout := range dateFormats {
-		if t, err = time.Parse(layout, s); err == nil {
+		if t, err = time.Parse(layout, clean_s); err == nil {
 			return t, nil
 		}
 	}
