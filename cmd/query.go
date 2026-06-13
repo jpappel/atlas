@@ -58,6 +58,7 @@ func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 	fs.Usage = func() {
 		w := fs.Output()
 		fmt.Fprintf(w, "%s [global-flags] query [query-flags] <query>...\n\n", os.Args[0])
+		fmt.Fprintf(w, "See %s help query for more detailed usage information\n\n", os.Args[0])
 		fmt.Fprintln(w, "Query Flags:")
 		PrintFlagSet(w, fs)
 		PrintGlobalFlags(w)
