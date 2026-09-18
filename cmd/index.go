@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jpappel/atlas/pkg/data"
 	"github.com/jpappel/atlas/pkg/index"
@@ -91,9 +92,11 @@ func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 		}
 
 		traversedFiles := idx.Traverse(gFlags.NumWorkers, iFlags.IgnoreHidden)
+		crawlTime := time.Now().UTC().Unix()
 		fmt.Print("Crawled ", len(traversedFiles))
 
 		filteredFiles := idx.Filter(traversedFiles, gFlags.NumWorkers)
+		filterTime := time.Now().UTC().Unix()
 		fmt.Print(", Filtered ", len(filteredFiles))
 
 		var errCnt uint64
@@ -106,6 +109,7 @@ func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 			}
 			fmt.Println()
 		}
+		parseTime := time.Now().UTC().Unix()
 
 		var err error
 		// switch in order to appease gopls...
@@ -119,6 +123,7 @@ func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {
 			fmt.Fprintln(os.Stderr, "Error modifying index:", err)
 			return 1
 		}
+		db.UpdateInfo(len(traversedFiles), crawlTime, len(filteredFiles), filterTime, len(idx.Documents), parseTime)
 	case "tidy":
 		if err := db.Tidy(); err != nil {
 			fmt.Fprintln(os.Stderr, "Error while tidying:", err)

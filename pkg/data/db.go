@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -451,9 +452,14 @@ func createSchema(db *sql.DB, version string) error {
 	}
 
 	t := time.Now().UTC().Unix()
-	if _, err = tx.Exec("INSERT OR IGNORE INTO Info (key, value, updated) VALUES (?,?,?), (?,?,?)",
+	hostname, _ := os.Hostname()
+	if _, err = tx.Exec(`
+	INSERT OR IGNORE INTO Info(key, value, updated)
+	VALUES
+	(?,?,?), (?,?,?), (?,?,?)`,
 		"created", "", t,
 		"version", version, t,
+		"creation_hostname", hostname, t,
 	); err != nil {
 		tx.Rollback()
 		return err
@@ -608,6 +614,29 @@ func (q Query) Execute(ctx context.Context, artifact query.CompilationArtifact) 
 
 func regex(re, s string) (bool, error) {
 	return regexp.MatchString(re, s)
+}
+
+func (q Query) UpdateInfo(crawlCount int, crawlTime int64, filteredCount int, filterTime int64, parseCount int, parseTime int64) error {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+	INSERT OR UPDATE INTO Info
+	VALUES
+	(?,?,?), (?,?,?), (?,?,?)`,
+		"crawl", fmt.Sprint(crawlCount), crawlTime,
+		"filter", fmt.Sprint(filteredCount), filterTime,
+		"parse", fmt.Sprint(parseCount), parseTime,
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func init() {
