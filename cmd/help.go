@@ -18,6 +18,7 @@ var helpTopics = []string{
 	"query", "q",
 	"shell",
 	"server",
+	"completions",
 }
 
 func PrintHelp(w io.Writer) {
@@ -28,6 +29,7 @@ func PrintHelp(w io.Writer) {
 	fmt.Fprintln(w, "  query <subcommand>    - search against an index")
 	fmt.Fprintln(w, "  shell                 - start a debug shell")
 	fmt.Fprintln(w, "  server                - start an http query server (EXPERIMENTAL)")
+	fmt.Fprintln(w, "  completions           - shell completions (EXPERIMENTAL)")
 	fmt.Fprintln(w, "  help  <help-topic>    - print help info")
 }
 
@@ -44,10 +46,9 @@ func PrintFlagSet(w io.Writer, fs *flag.FlagSet) {
 }
 
 func Help(topic string, w io.Writer) {
-	fs := flag.NewFlagSet(topic, flag.ExitOnError)
 	switch topic {
 	case "index", "i":
-		SetupIndexFlags(nil, fs, &IndexFlags{})
+		fs := NewIndexFlagSet(&IndexFlags{})
 		fmt.Fprintf(w, "%s [global-flags] index [index-flags] <subcommand>\n\n", os.Args[0])
 		fmt.Fprintln(w, "Subcommands:")
 		fmt.Fprintln(w, "  build  - create a new index")
@@ -69,7 +70,7 @@ func Help(topic string, w io.Writer) {
 		fmt.Fprintf(w, "%s [global-flags] index tidy\n\n", os.Args[0])
 		fmt.Fprintln(w, "Remove unused authors or tags and optimize the database")
 	case "query", "q":
-		SetupQueryFlags(nil, fs, &QueryFlags{}, "")
+		fs := NewQueryFlagSet(&QueryFlags{}, "")
 		fmt.Fprintf(w, "%s [global-flags] query [query-flags] <query>...\n\n", os.Args[0])
 		fmt.Fprintln(w, "Execute a query against the connected database")
 		fmt.Fprintln(w, "Query Flags:")
@@ -156,7 +157,7 @@ Atlas recognizes many of the common date formats.
 		fmt.Fprintln(w, "\nShell Help:")
 		shell.PrintHelp(w)
 	case "server":
-		SetupServerFlags(nil, fs, &ServerFlags{})
+		fs := NewServerFlagSet(&ServerFlags{})
 		fmt.Fprintf(w, "%s [global-flags] server [server-flags]\n", os.Args[0])
 		fmt.Fprintln(w, "Run a server to execute queries over HTTP or a unix domain socket")
 		fmt.Fprintln(w, "HTTP Server:")
@@ -167,6 +168,11 @@ Atlas recognizes many of the common date formats.
 		fmt.Fprintln(w, "    sortOrder: desc, descending")
 		fmt.Fprintln(w, "Server Flags:")
 		PrintFlagSet(w, fs)
+	case "completions":
+		fmt.Fprintf(w, "%s completions <shell>\n", os.Args[0])
+		fmt.Fprintln(w, "Generate shell completions")
+		fmt.Fprintln(w, "Supported Shells:")
+		fmt.Fprintln(w, "  zsh")
 	case "help", "":
 		PrintHelp(w)
 		fmt.Fprintln(w, "\nHelp Topics:")

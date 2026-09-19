@@ -1,7 +1,13 @@
 package cmd
 
-import "fmt"
+import (
+	_ "embed"
+	"fmt"
+)
+
+//go:embed completions/atlas.zsh
+var zshCompletions string
 
 func ZshCompletions() {
-	fmt.Println("Not implemented yet!")
+	fmt.Print(zshCompletions)
 }

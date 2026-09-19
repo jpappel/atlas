@@ -19,7 +19,8 @@ type IndexFlags struct {
 	index.ParseOpts
 }
 
-func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
+func NewIndexFlagSet(flags *IndexFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("index", flag.ExitOnError)
 	flags.ParseLinks = true
 	flags.ParseMeta = true
 	flags.ParseHeadings = true
@@ -65,14 +66,7 @@ func SetupIndexFlags(args []string, fs *flag.FlagSet, flags *IndexFlags) {
 		PrintGlobalFlags(f)
 	}
 
-	fs.Parse(args)
-
-	remainingArgs := fs.Args()
-	if len(remainingArgs) == 0 {
-		flags.Subcommand = "build"
-	} else if len(remainingArgs) == 1 {
-		flags.Subcommand = remainingArgs[0]
-	}
+	return fs
 }
 
 func RunIndex(gFlags GlobalFlags, iFlags IndexFlags, db *data.Query) byte {

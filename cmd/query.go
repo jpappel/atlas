@@ -22,7 +22,10 @@ type QueryFlags struct {
 	SortDesc          bool
 }
 
-func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFormat string) {
+func NewQueryFlagSet(flags *QueryFlags, dateFormat string) *flag.FlagSet {
+
+	fs := flag.NewFlagSet("query", flag.ExitOnError)
+
 	// NOTE: providing `-outFormat` before `-outCustomFormat` might ignore user specified format
 	fs.Func("outFormat", "output `format` for queries (default, json, yaml, pathonly, custom)",
 		func(arg string) error {
@@ -63,8 +66,7 @@ func SetupQueryFlags(args []string, fs *flag.FlagSet, flags *QueryFlags, dateFor
 		PrintFlagSet(w, fs)
 		PrintGlobalFlags(w)
 	}
-
-	fs.Parse(args)
+	return fs
 }
 
 func RunQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery string) byte {

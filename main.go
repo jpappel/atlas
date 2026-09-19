@@ -26,25 +26,28 @@ func addGlobalFlagUsage(fs *flag.FlagSet) func() {
 }
 
 func main() {
+	exitCode := 0
+	defer func() { os.Exit(exitCode) }()
+
+	// global flags
 	globalFlags := cmd.GlobalFlags{}
 	cmd.SetupGlobalFlags(flag.CommandLine, &globalFlags)
-
-	indexFs := flag.NewFlagSet("index", flag.ExitOnError)
-	queryFs := flag.NewFlagSet("query", flag.ExitOnError)
-	shellFs := flag.NewFlagSet("debug", flag.ExitOnError)
-	serverFs := flag.NewFlagSet("server", flag.ExitOnError)
-	completionsFs := flag.NewFlagSet("completions", flag.ContinueOnError)
-
-	// set default usage for flagsets without subcommands
-	shellFs.Usage = addGlobalFlagUsage(shellFs)
-	serverFs.Usage = addGlobalFlagUsage(serverFs)
-
 	flag.Parse()
 	args := flag.Args()
 
 	queryFlags := cmd.QueryFlags{Outputer: query.DefaultOutput{}}
 	indexFlags := cmd.IndexFlags{}
 	serverFlags := cmd.ServerFlags{Port: 8080}
+
+	indexFs := cmd.NewIndexFlagSet(&indexFlags)
+	queryFs := cmd.NewQueryFlagSet(&queryFlags, globalFlags.DateFormat)
+	shellFs := flag.NewFlagSet("debug", flag.ExitOnError)
+	serverFs := cmd.NewServerFlagSet(&serverFlags)
+	completionsFs := flag.NewFlagSet("completions", flag.ContinueOnError)
+
+	// set default usage for flagsets without subcommands
+	shellFs.Usage = addGlobalFlagUsage(shellFs)
+	serverFs.Usage = addGlobalFlagUsage(serverFs)
 
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "No Command provided")
@@ -56,11 +59,17 @@ func main() {
 
 	switch command {
 	case "query", "q":
-		cmd.SetupQueryFlags(args[1:], queryFs, &queryFlags, globalFlags.DateFormat)
+		queryFs.Parse(args[1:])
 	case "index", "i":
-		cmd.SetupIndexFlags(args[1:], indexFs, &indexFlags)
+		indexFs.Parse(args[1:])
+		remainingArgs := indexFs.Args()
+		if len(remainingArgs) == 0 {
+			indexFlags.Subcommand = "build"
+		} else if len(remainingArgs) == 1 {
+			indexFlags.Subcommand = remainingArgs[0]
+		}
 	case "server":
-		cmd.SetupServerFlags(args[1:], serverFs, &serverFlags)
+		serverFs.Parse(args[1:])
 	case "completions":
 		completionsFs.Parse(args[1:])
 	case "help":
@@ -126,10 +135,11 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
+	// TODO: remove later querier instances
 	querier := data.NewQuery(globalFlags.DBPath, VERSION)
+	defer querier.Close()
 
 	// command specific
-	var exitCode int
 	switch command {
 	case "query", "q":
 		searchQuery := strings.Join(queryFs.Args(), " ")
@@ -140,6 +150,15 @@ func main() {
 		exitCode = int(cmd.RunServer(globalFlags, serverFlags, querier))
 	case "completions":
 		lang := completionsFs.Arg(0)
+		fmt.Fprintln(os.Stderr, "General Flags")
+		flag.VisitAll(func(f *flag.Flag) {
+			fmt.Fprintf(os.Stderr, "%s - %s\n", f.Name, f.Usage)
+		})
+		fmt.Fprintln(os.Stderr, "Index Flags")
+		indexFs.VisitAll(func(f *flag.Flag) {
+			fmt.Fprintf(os.Stderr, "%s - %s\n", f.Name, f.Usage)
+		})
+
 		switch lang {
 		case "zsh":
 			cmd.ZshCompletions()
@@ -152,7 +171,4 @@ func main() {
 	case "shell":
 		exitCode = int(cmd.RunShell(globalFlags, querier, VERSION))
 	}
-
-	querier.Close()
-	os.Exit(exitCode)
 }

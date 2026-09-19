@@ -21,11 +21,12 @@ type ServerFlags struct {
 	Port    int
 }
 
-func SetupServerFlags(args []string, fs *flag.FlagSet, flags *ServerFlags) {
+func NewServerFlagSet(flags *ServerFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("server", flag.ExitOnError)
 	fs.StringVar(&flags.Address, "address", "127.0.0.1", "the address to listen on, prefix with 'unix:' to create a unixsocket")
 	fs.IntVar(&flags.Port, "port", 8080, "the port to bind to")
 
-	fs.Parse(args)
+	return fs
 }
 
 func RunServer(gFlags GlobalFlags, sFlags ServerFlags, db *data.Query) byte {
