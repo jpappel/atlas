@@ -53,7 +53,7 @@ func NewQueryFlagSet(flags *QueryFlags, dateFormat string) *flag.FlagSet {
 
 	fs.StringVar(&flags.SortBy, "sortBy", "", "category to sort by (path,title,date,filetime,meta)")
 	fs.BoolVar(&flags.SortDesc, "sortDesc", false, "sort in descending order")
-	fs.StringVar(&flags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "`format` string for --outFormat custom, see `atlas help query` for more details")
+	fs.StringVar(&flags.CustomFormat, "outCustomFormat", query.DefaultOutputFormat, "`format` string for -outFormat custom, see `atlas help query` for more details")
 	fs.IntVar(&flags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
 	fs.StringVar(&flags.DocumentSeparator, "docSeparator", "\n", "separator for custom output format")
 	fs.StringVar(&flags.ListSeparator, "listSeparator", ", ", "separator for list fields")

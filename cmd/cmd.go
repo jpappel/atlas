@@ -37,8 +37,8 @@ func SetupGlobalFlags(fs_ *flag.FlagSet, flags *GlobalFlags) {
 	flag.StringVar(&flags.IndexRoot, "root", xdg.UserDirs.Documents, "root `directory` for indexing")
 	flag.StringVar(&flags.DBPath, "db", dataHome+string(os.PathSeparator)+"default.db", "`path` to document database")
 	flag.StringVar(&flags.LogLevel, "logLevel", "error", "set log `level` (debug, info, warn, error)")
-	flag.BoolVar(&flags.LogJson, "logJson", false, "log to json")
+	flag.BoolVar(&flags.LogJson, "logJson", false, "output log information as json")
 	flag.UintVar(&flags.NumWorkers, "numWorkers", uint(runtime.NumCPU()), "number of worker threads to use (defaults to core count)")
 	flag.StringVar(&flags.DateFormat, "dateFormat", time.RFC3339, "`format` for dates (see https://pkg.go.dev/time#Layout for more details)")
-	flag.StringVar(&flags.LogFile, "logFile", "", "`file` to log errors to, use '-' for stdout and empty for stderr")
+	flag.StringVar(&flags.LogFile, "logFile", "", "`file` to log errors to, use '-' for stdout and do not set a value for stderr")
 }

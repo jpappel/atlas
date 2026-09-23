@@ -150,20 +150,12 @@ func main() {
 		exitCode = int(cmd.RunServer(globalFlags, serverFlags, querier))
 	case "completions":
 		lang := completionsFs.Arg(0)
-		fmt.Fprintln(os.Stderr, "General Flags")
-		flag.VisitAll(func(f *flag.Flag) {
-			fmt.Fprintf(os.Stderr, "%s - %s\n", f.Name, f.Usage)
-		})
-		fmt.Fprintln(os.Stderr, "Index Flags")
-		indexFs.VisitAll(func(f *flag.Flag) {
-			fmt.Fprintf(os.Stderr, "%s - %s\n", f.Name, f.Usage)
-		})
 
 		switch lang {
 		case "zsh":
 			cmd.ZshCompletions()
 		default:
-			fmt.Fprintf(os.Stderr, "Unrecognized completion language `%s`\n", lang)
+			fmt.Fprintf(os.Stderr, "Unrecognized completion language `%s`\n\n", lang)
 			fmt.Fprintf(os.Stderr, "Usage %s completions <language>\n", os.Args[0])
 			fmt.Fprintln(os.Stderr, "Supported languages: zsh")
 			exitCode = 2
