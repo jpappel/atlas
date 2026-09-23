@@ -42,6 +42,7 @@ _atlas() {
 _atlas_query() {
 
     _arguments \
+        '-dry[parse query for errors but do not execute]' \
         '-outFormat[output format for queries]:format:(default json yaml pathonly custom)' \
         '-sortBy[category to sort by]:sortCriteria:(path title date filetime meta)' \
         '-sortDesc[sort in descending order]' \

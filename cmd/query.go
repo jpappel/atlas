@@ -20,6 +20,7 @@ type QueryFlags struct {
 	OptimizationLevel int
 	SortBy            string
 	SortDesc          bool
+	DryRun            bool
 }
 
 func NewQueryFlagSet(flags *QueryFlags, dateFormat string) *flag.FlagSet {
@@ -57,6 +58,7 @@ func NewQueryFlagSet(flags *QueryFlags, dateFormat string) *flag.FlagSet {
 	fs.IntVar(&flags.OptimizationLevel, "optLevel", 0, "optimization `level` for queries, 0 is automatic, <0 to disable")
 	fs.StringVar(&flags.DocumentSeparator, "docSeparator", "\n", "separator for custom output format")
 	fs.StringVar(&flags.ListSeparator, "listSeparator", ", ", "separator for list fields")
+	fs.BoolVar(&flags.DryRun, "dry", false, "parse query for errors but do not execute")
 
 	fs.Usage = func() {
 		w := fs.Output()
@@ -75,6 +77,10 @@ func RunQuery(gFlags GlobalFlags, qFlags QueryFlags, db *data.Query, searchQuery
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to parse query: ", err)
 		return 1
+	}
+
+	if qFlags.DryRun {
+		return 0
 	}
 
 	o := query.NewOptimizer(clause, gFlags.NumWorkers)
