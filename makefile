@@ -3,7 +3,7 @@ BUILD_TAGS := icu fts5
 SRC := main.go $(wildcard cmd/*.go) $(wildcard pkg/*/*.go)
 EMBEDDED_FILES := $(wildcard cmd/completions/*)
 INSTALL_PATH := ~/.local/bin
-COMPLETION_PATHS := ~/.config/zsh/completions/_atlas
+COMPLETION_PATHS := ~/.local/share/zsh/completions/_atlas
 
 .PHONY: all install uninstall test info clean
 
@@ -24,7 +24,7 @@ install: $(INSTALL_PATH)/atlas $(COMPLETION_PATHS)
 $(INSTALL_PATH)/atlas: atlas
 	cp atlas $(INSTALL_PATH)
 
-~/.config/zsh/completions/_atlas: atlas
+~/.local/share/zsh/completions/_atlas: atlas
 	mkdir -p $(dir $@)
 	$< completions zsh > $@
 
